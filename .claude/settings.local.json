@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx skills:*)",
+      "Bash(npm search:*)",
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(netlify --version)"
+    ]
+  }
+}

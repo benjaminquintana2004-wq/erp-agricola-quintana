@@ -1,0 +1,9 @@
+[dev]
+  # Carpeta que Netlify sirve como sitio estático
+  publish = "public"
+  # Puerto local para desarrollo
+  port = 8888
+
+[build]
+  # Carpeta que se publica en producción
+  publish = "public"

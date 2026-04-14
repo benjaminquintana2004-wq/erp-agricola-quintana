@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestión de Arrendamientos</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0f0e0c;--bg2:#1a1915;--bg3:#232219;--bg4:#2c2b21;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);--ink:#f0ede4;--ink2:#a8a49a;--ink3:#6b6760;--gold:#c9a84c;--gold2:#e8c96a;--gold-bg:#c9a84c18;--green:#4a9e6e;--green-bg:#4a9e6e18;--red:#c05a4a;--red-bg:#c05a4a18;--blue:#5a8fc0;--blue-bg:#5a8fc018;--mono:'IBM Plex Mono',monospace;--serif:'Instrument Serif',serif;--r:10px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--mono);min-height:100vh;font-size:13px}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:200px;min-height:100vh;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:10}
+.logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
+.logo-title{font-family:var(--serif);font-size:18px;color:var(--ink);font-style:italic;line-height:1.2}
+.logo-sub{font-size:10px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;margin-top:4px}
+.nav{padding:16px 0;flex:1}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--ink3);font-size:11px;cursor:pointer;transition:all .15s;letter-spacing:.06em;text-transform:uppercase;border-left:2px solid transparent}
+.nav-item:hover{color:var(--ink);background:rgba(255,255,255,.03)}
+.nav-item.active{color:var(--gold);border-left-color:var(--gold);background:var(--gold-bg)}
+.nav-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.main{margin-left:200px;flex:1;padding:36px 40px;max-width:calc(100vw - 200px)}
+.page-header{margin-bottom:32px;display:flex;align-items:flex-end;justify-content:space-between}
+.page-title{font-family:var(--serif);font-size:30px;font-style:italic;color:var(--ink);line-height:1}
+.page-sub{font-size:11px;color:var(--ink3);margin-top:5px;letter-spacing:.05em}
+#config-banner{background:var(--gold-bg);border:1px solid var(--gold);border-radius:var(--r);padding:12px 18px;margin-bottom:24px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:10px}
+#config-banner.hidden{display:none}
+#config-banner a{color:var(--gold2);text-decoration:underline;cursor:pointer}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;position:relative;overflow:hidden}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat.gold::before{background:var(--gold)}.stat.green::before{background:var(--green)}.stat.red::before{background:var(--red)}.stat.blue::before{background:var(--blue)}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);margin-bottom:10px}
+.stat-val{font-family:var(--serif);font-size:26px;color:var(--ink);line-height:1}
+.stat-sub{font-size:11px;color:var(--ink3);margin-top:5px}
+.charts-row{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:28px}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.chart-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);margin-bottom:16px}
+.chart-wrap{position:relative;height:200px}
+.table-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:28px}
+.table-topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.table-name{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:10px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);border-bottom:1px solid var(--border);background:var(--bg3);font-weight:500}
+td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--ink2)}
+td strong{color:var(--ink)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.015)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:500}
+.badge-gold{background:var(--gold-bg);color:var(--gold);border:1px solid rgba(201,168,76,.25)}
+.badge-green{background:var(--green-bg);color:var(--green);border:1px solid rgba(74,158,110,.25)}
+.badge-red{background:var(--red-bg);color:var(--red);border:1px solid rgba(192,90,74,.25)}
+.badge-gray{background:rgba(255,255,255,.05);color:var(--ink3);border:1px solid var(--border)}
+.btn{padding:8px 16px;border-radius:6px;font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .15s;border:none;letter-spacing:.04em;display:inline-flex;align-items:center;gap:6px}
+.btn-gold{background:var(--gold);color:#0f0e0c;font-weight:500}.btn-gold:hover{background:var(--gold2)}
+.btn-outline{background:transparent;color:var(--ink2);border:1px solid var(--border2)}.btn-outline:hover{border-color:var(--gold);color:var(--gold)}
+.btn-ghost{background:transparent;color:var(--ink3);border:none;padding:6px 10px}.btn-ghost:hover{color:var(--ink)}
+.btn-sm{padding:5px 11px;font-size:10px}
+.search{padding:7px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:12px;color:var(--ink);outline:none;width:180px}.search::placeholder{color:var(--ink3)}.search:focus{border-color:var(--gold)}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;backdrop-filter:blur(4px)}
+.overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px;width:520px;max-width:94vw;transform:translateY(14px);transition:transform .2s;max-height:88vh;overflow-y:auto}
+.overlay.open .modal{transform:translateY(0)}
+.modal-title{font-family:var(--serif);font-size:22px;font-style:italic;margin-bottom:20px;color:var(--ink)}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin-bottom:6px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:12px;color:var(--ink);outline:none}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--gold)}
+.form-group select option{background:var(--bg2)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:18px;border-top:1px solid var(--border)}
+.pdf-zone{border:1.5px dashed var(--border2);border-radius:10px;padding:32px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg3);position:relative}
+.pdf-zone:hover{border-color:var(--gold);background:var(--gold-bg)}
+.pdf-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.pdf-zone-icon{font-size:28px;margin-bottom:10px;color:var(--ink3)}
+.pdf-zone-text{font-size:12px;color:var(--ink3);line-height:1.5}
+.pdf-zone-text strong{color:var(--ink2);display:block;margin-bottom:4px}
+.extract-result{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:16px;margin-top:14px;font-size:12px}
+.extract-field{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)}
+.extract-field:last-child{border-bottom:none}
+.extract-key{color:var(--ink3)}.extract-val{color:var(--gold);font-weight:500}
+.extract-status{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:6px;margin-top:10px;font-size:11px}
+.extract-status.loading{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(90,143,192,.2)}
+.extract-status.ok{background:var(--green-bg);color:var(--green);border:1px solid rgba(74,158,110,.2)}
+.extract-status.err{background:var(--red-bg);color:var(--red);border:1px solid rgba(192,90,74,.2)}
+.spinner{width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.saldo-bar{height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;width:80px}
+.saldo-fill{height:100%;border-radius:2px}
+.empty{text-align:center;padding:48px;color:var(--ink3);font-size:12px}
+.loading-row{text-align:center;padding:32px;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.config-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:16px}
+.config-card h3{font-family:var(--serif);font-size:18px;font-style:italic;margin-bottom:6px}
+.config-card p{font-size:12px;color:var(--ink3);margin-bottom:16px;line-height:1.6}
+.config-row{display:flex;gap:8px}
+.config-row input{flex:1;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:12px;color:var(--ink);outline:none}
+.config-row input:focus{border-color:var(--gold)}
+.step{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
+.step-n{width:22px;height:22px;border-radius:50%;background:var(--gold-bg);border:1px solid rgba(201,168,76,.3);color:var(--gold);font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-t{font-size:12px;color:var(--ink2);line-height:1.55}
+.step-t code{background:var(--bg4);padding:1px 6px;border-radius:3px;font-size:11px;color:var(--gold)}
+.step-t a{color:var(--gold);text-decoration:underline}
+.conn-status{margin-top:10px;font-size:11px;color:var(--ink3)}
+tr.alerta td{background:rgba(192,90,74,.04)}
+.tabs{display:flex;gap:4px;margin-bottom:20px}
+.tab{padding:6px 14px;border-radius:20px;font-size:11px;cursor:pointer;transition:all .15s;border:1px solid transparent;color:var(--ink3)}
+.tab:hover{color:var(--ink)}.tab.active{background:var(--gold-bg);color:var(--gold);border-color:rgba(201,168,76,.25)}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="logo"><div class="logo-title">Campo<br>& Quintales</div><div class="logo-sub">gestión de arrendamientos</div></div>
+  <nav class="nav">
+    <div class="nav-item active" onclick="showPage('dashboard')"><span class="nav-dot"></span>Dashboard</div>
+    <div class="nav-item" onclick="showPage('saldos')"><span class="nav-dot"></span>Saldos</div>
+    <div class="nav-item" onclick="showPage('movimientos')"><span class="nav-dot"></span>Movimientos</div>
+    <div class="nav-item" onclick="showPage('subir')"><span class="nav-dot"></span>Subir PDF</div>
+    <div class="nav-item" onclick="showPage('arrendadores')"><span class="nav-dot"></span>Arrendadores</div>
+    <div class="nav-item" onclick="showPage('config')"><span class="nav-dot"></span>Configuración</div>
+  </nav>
+</aside>
+<main class="main">
+<div id="config-banner"><span>⚠</span><span>Sin conexión a Google Sheets. <a onclick="showPage('config')">Configurar →</a></span></div>
+
+<!-- DASHBOARD -->
+<div id="page-dashboard">
+  <div class="page-header"><div><div class="page-title">Dashboard</div><div class="page-sub">resumen general de la operación</div></div><button class="btn btn-outline" onclick="loadAll()">↻ Actualizar</button></div>
+  <div class="stats">
+    <div class="stat gold"><div class="stat-label">Arrendadores</div><div class="stat-val" id="d-total">—</div><div class="stat-sub">contratos activos</div></div>
+    <div class="stat red"><div class="stat-label">Con alerta</div><div class="stat-val" id="d-alertas">—</div><div class="stat-sub">saldo bajo umbral</div></div>
+    <div class="stat blue"><div class="stat-label">QQ pendientes</div><div class="stat-val" id="d-qq">—</div><div class="stat-sub">total a entregar</div></div>
+    <div class="stat green"><div class="stat-label">Movimientos</div><div class="stat-val" id="d-mov">—</div><div class="stat-sub">registrados</div></div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card"><div class="chart-title">Saldo pendiente por arrendador (top 10)</div><div class="chart-wrap"><canvas id="chart-saldos"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">QQ entregados por mes</div><div class="chart-wrap"><canvas id="chart-mov"></canvas></div></div>
+  </div>
+  <div class="table-card"><div class="table-topbar"><span class="table-name">Alertas activas</span></div><div id="tabla-alertas"><div class="loading-row">cargando...</div></div></div>
+</div>
+
+<!-- SALDOS -->
+<div id="page-saldos" style="display:none">
+  <div class="page-header"><div><div class="page-title">Saldos</div><div class="page-sub">quintales pendientes por arrendador</div></div><button class="btn btn-gold" onclick="openModal('movimiento')">+ Registrar pedido</button></div>
+  <div class="table-card">
+    <div class="table-topbar"><span class="table-name">Arrendadores</span><input class="search" placeholder="Buscar..." oninput="filterSaldos(this.value)"></div>
+    <div id="tabla-saldos"><div class="loading-row">cargando...</div></div>
+  </div>
+</div>
+
+<!-- MOVIMIENTOS -->
+<div id="page-movimientos" style="display:none">
+  <div class="page-header"><div><div class="page-title">Movimientos</div><div class="page-sub">historial de pedidos de quintales</div></div><button class="btn btn-gold" onclick="openModal('movimiento')">+ Registrar pedido</button></div>
+  <div class="table-card"><div id="tabla-movimientos"><div class="loading-row">cargando...</div></div></div>
+</div>
+
+<!-- SUBIR PDF -->
+<div id="page-subir" style="display:none">
+  <div class="page-header"><div><div class="page-title">Subir PDF</div><div class="page-sub">extracción automática con Gemini · gratuito</div></div></div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchPdfTab('contrato',this)">Contrato de arrendamiento</div>
+    <div class="tab" onclick="switchPdfTab('factura',this)">Factura de venta</div>
+  </div>
+  <div id="pdf-contrato">
+    <div class="table-card" style="padding:24px">
+      <div class="chart-title" style="margin-bottom:16px">Subí un contrato · Gemini extrae los datos y los carga en Sheets automáticamente</div>
+      <div class="pdf-zone"><input type="file" accept=".pdf" onchange="handlePdf('contrato',this.files[0])"><div class="pdf-zone-icon">⬆</div><div class="pdf-zone-text"><strong>Arrastrá o hacé clic para subir</strong>Contrato de arrendamiento rural (.pdf)</div></div>
+      <div id="status-contrato"></div><div id="result-contrato"></div>
+      <div id="actions-contrato" style="display:none;margin-top:16px">
+        <div class="form-group"><label>Quintales adeudados — campaña actual (podés ajustar)</label><input type="number" id="c-qq-override" placeholder="Se calcula del contrato automáticamente"></div>
+        <div class="form-group"><label>Umbral de alerta (qq)</label><input type="number" id="c-umbral" value="20"></div>
+        <div class="form-actions"><button class="btn btn-outline" onclick="resetPdf('contrato')">Cancelar</button><button class="btn btn-gold" id="btn-guardar-contrato" onclick="guardarDesdeContrato()">Guardar arrendador en Sheets</button></div>
+      </div>
+    </div>
+  </div>
+  <div id="pdf-factura" style="display:none">
+    <div class="table-card" style="padding:24px">
+      <div class="chart-title" style="margin-bottom:16px">Subí una factura · Gemini extrae el movimiento y descuenta el saldo automáticamente</div>
+      <div class="pdf-zone"><input type="file" accept=".pdf" onchange="handlePdf('factura',this.files[0])"><div class="pdf-zone-icon">⬆</div><div class="pdf-zone-text"><strong>Arrastrá o hacé clic para subir</strong>Factura de venta de quintales (.pdf)</div></div>
+      <div id="status-factura"></div><div id="result-factura"></div>
+      <div id="actions-factura" style="display:none;margin-top:16px">
+        <div class="form-group"><label>Arrendador (confirmá o corregí)</label><select id="f-arrendador-sel"><option value="">Cargando...</option></select></div>
+        <div class="form-actions"><button class="btn btn-outline" onclick="resetPdf('factura')">Cancelar</button><button class="btn btn-gold" id="btn-guardar-factura" onclick="guardarDesdeFactura()">Registrar movimiento en Sheets</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ARRENDADORES -->
+<div id="page-arrendadores" style="display:none">
+  <div class="page-header"><div><div class="page-title">Arrendadores</div><div class="page-sub">listado completo de propietarios</div></div><button class="btn btn-outline" onclick="openModal('arrendador')">+ Agregar manual</button></div>
+  <div class="table-card"><div id="tabla-arrendadores"><div class="loading-row">cargando...</div></div></div>
+</div>
+
+<!-- CONFIG -->
+<div id="page-config" style="display:none">
+  <div class="page-header"><div><div class="page-title">Configuración</div><div class="page-sub">conexión con Google Sheets y Gemini</div></div></div>
+  <div class="config-card">
+    <h3>URL del Apps Script (Google Sheets)</h3>
+    <p>Pegá la URL de tu Google Apps Script publicado como aplicación web.</p>
+    <div class="config-row"><input type="text" id="input-sheets-url" placeholder="https://script.google.com/macros/s/.../exec"><button class="btn btn-gold" onclick="saveSheets()">Guardar</button><button class="btn btn-outline" onclick="testSheets()">Probar</button></div>
+    <div class="conn-status" id="conn-sheets"></div>
+  </div>
+  <div class="config-card">
+    <h3>API Key de Gemini · gratuita, sin tarjeta</h3>
+    <p>Necesaria para leer contratos y facturas. Completamente gratuita con hasta 500 PDFs por día. Se guarda solo en tu navegador.</p>
+    <div class="config-row"><input type="password" id="input-gemini-key" placeholder="AIza..."><button class="btn btn-gold" onclick="saveGeminiKey()">Guardar</button></div>
+    <div class="conn-status" id="conn-gemini"></div>
+    <div style="margin-top:16px">
+      <div class="step"><div class="step-n">1</div><div class="step-t">Entrá a <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> con tu cuenta de Google</div></div>
+      <div class="step"><div class="step-n">2</div><div class="step-t">Hacé clic en <code>Create API Key</code> · No pide tarjeta de crédito</div></div>
+      <div class="step"><div class="step-n">3</div><div class="step-t">Copiá la clave (empieza con <code>AIza</code>) y pegala arriba</div></div>
+    </div>
+  </div>
+  <div class="config-card">
+    <h3>Instalación del backend de Google Sheets</h3>
+    <div>
+      <div class="step"><div class="step-n">1</div><div class="step-t">Creá una planilla en Google Sheets con 3 hojas: <code>Arrendadores</code>, <code>Movimientos</code> y <code>Contratos</code></div></div>
+      <div class="step"><div class="step-n">2</div><div class="step-t">En Sheets: <code>Extensiones → Apps Script</code> → pegá el contenido del archivo <code>apps_script_backend.js</code></div></div>
+      <div class="step"><div class="step-n">3</div><div class="step-t"><code>Implementar → Nueva implementación → Aplicación web → Cualquier usuario</code></div></div>
+      <div class="step"><div class="step-n">4</div><div class="step-t">Copiá la URL generada y pegala en el campo de arriba</div></div>
+    </div>
+  </div>
+</div>
+</main>
+</div>
+
+<!-- MODAL MOVIMIENTO -->
+<div class="overlay" id="overlay-movimiento" onclick="closeBg(event,'movimiento')">
+  <div class="modal">
+    <div class="modal-title">Registrar pedido de quintales</div>
+    <div class="form-group"><label>Arrendador</label><select id="mov-arr"><option value="">Seleccioná...</option></select></div>
+    <div class="form-row"><div class="form-group"><label>Quintales</label><input type="number" id="mov-qq" oninput="calcMov()"></div><div class="form-group"><label>Fecha</label><input type="date" id="mov-fecha"></div></div>
+    <div class="form-row"><div class="form-group"><label>Precio/qq</label><input type="number" id="mov-precio" oninput="calcMov()"></div><div class="form-group"><label>Moneda</label><select id="mov-moneda"><option value="USD">USD</option><option value="ARS">ARS</option></select></div></div>
+    <div class="form-group"><label>Total</label><input type="text" id="mov-total" readonly style="background:var(--bg4);color:var(--ink3)"></div>
+    <div class="form-group"><label>Observaciones</label><textarea id="mov-obs" rows="2"></textarea></div>
+    <div class="form-actions"><button class="btn btn-outline" onclick="closeModal('movimiento')">Cancelar</button><button class="btn btn-gold" onclick="guardarMovimiento()">Guardar</button></div>
+  </div>
+</div>
+
+<!-- MODAL ARRENDADOR -->
+<div class="overlay" id="overlay-arrendador" onclick="closeBg(event,'arrendador')">
+  <div class="modal">
+    <div class="modal-title">Agregar arrendador</div>
+    <div class="form-row"><div class="form-group"><label>Nombre</label><input type="text" id="a-nombre"></div><div class="form-group"><label>Teléfono</label><input type="text" id="a-tel"></div></div>
+    <div class="form-group"><label>Campo / Ubicación</label><input type="text" id="a-campo"></div>
+    <div class="form-row"><div class="form-group"><label>Hectáreas</label><input type="number" id="a-ha"></div><div class="form-group"><label>Grano</label><select id="a-grano"><option>Soja</option><option>Maíz</option><option>Trigo</option><option>Girasol</option><option>Otro</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label>QQ adeudados</label><input type="number" id="a-qq"></div><div class="form-group"><label>Moneda</label><select id="a-moneda"><option value="USD">USD</option><option value="ARS">ARS</option></select></div></div>
+    <div class="form-group"><label>Umbral de alerta (qq)</label><input type="number" id="a-umbral" value="20"></div>
+    <div class="form-actions"><button class="btn btn-outline" onclick="closeModal('arrendador')">Cancelar</button><button class="btn btn-gold" onclick="guardarArrendador()">Guardar</button></div>
+  </div>
+</div>
+
+<script>
+let SHEETS_URL=localStorage.getItem('sheets_url')||'';
+let GEMINI_KEY=localStorage.getItem('gemini_key')||'';
+let saldosData=[],movData=[],arrData=[];
+let extractedContrato=null,extractedFactura=null;
+let chartSaldos=null,chartMov=null;
+const GEMINI_MODEL='gemini-2.5-flash';
+
+window.onload=()=>{
+  document.getElementById('input-sheets-url').value=SHEETS_URL;
+  document.getElementById('input-gemini-key').value=GEMINI_KEY;
+  checkBanner();
+  document.getElementById('mov-fecha').value=new Date().toISOString().split('T')[0];
+  showPage('dashboard');
+};
+
+function checkBanner(){document.getElementById('config-banner').classList.toggle('hidden',!!SHEETS_URL);}
+
+function showPage(name){
+  ['dashboard','saldos','movimientos','subir','arrendadores','config'].forEach(p=>{
+    document.getElementById('page-'+p).style.display=p===name?'':'none';
+  });
+  document.querySelectorAll('.nav-item').forEach((el,i)=>{
+    el.classList.toggle('active',['dashboard','saldos','movimientos','subir','arrendadores','config'][i]===name);
+  });
+  if(name==='dashboard') loadAll();
+  if(name==='saldos') loadSaldos();
+  if(name==='movimientos') loadMovimientos();
+  if(name==='arrendadores') loadArrendadores();
+  if(name==='subir') populateArrSelect('f-arrendador-sel');
+}
+
+async function api(action,body=null){
+  if(!SHEETS_URL) throw new Error('Sin URL configurada');
+  const r=await fetch(SHEETS_URL+'?action='+action,body?{method:'POST',body:JSON.stringify({action,...body})}:{method:'GET'});
+  const j=await r.json();
+  if(!j.ok) throw new Error(j.error||'Error');
+  return j.data;
+}
+
+async function loadAll(){
+  if(!SHEETS_URL) return;
+  try{
+    [saldosData,movData]=await Promise.all([api('getSaldos'),api('getMovimientos')]);
+    arrData=saldosData;
+    renderDashboard();
+    populateArrSelect('mov-arr');
+    populateArrSelect('f-arrendador-sel');
+  }catch(e){console.error(e);}
+}
+
+async function loadSaldos(){
+  if(!SHEETS_URL){showEmpty('tabla-saldos');return;}
+  try{saldosData=await api('getSaldos');arrData=saldosData;renderSaldos(saldosData);}
+  catch(e){document.getElementById('tabla-saldos').innerHTML=errMsg(e);}
+}
+
+async function loadMovimientos(){
+  if(!SHEETS_URL){showEmpty('tabla-movimientos');return;}
+  try{movData=await api('getMovimientos');renderMovimientos(movData);}
+  catch(e){document.getElementById('tabla-movimientos').innerHTML=errMsg(e);}
+}
+
+async function loadArrendadores(){
+  if(!SHEETS_URL){showEmpty('tabla-arrendadores');return;}
+  try{
+    arrData=await api('getArrendadores');
+    document.getElementById('tabla-arrendadores').innerHTML=arrData.length
+      ?`<table><thead><tr><th>Nombre</th><th>Campo</th><th>Ha</th><th>Grano</th><th>Moneda</th><th>QQ deuda</th><th>Umbral</th></tr></thead><tbody>${arrData.map(a=>`<tr><td><strong>${a.nombre}</strong></td><td style="color:var(--ink3);font-size:11px">${a.campo||'—'}</td><td style="font-size:11px">${Number(a.hectareas||0).toLocaleString('es-AR')} ha</td><td><span class="badge badge-gold">${a.grano||'—'}</span></td><td><span class="badge ${a.moneda==='USD'?'badge-green':'badge-gray'}">${a.moneda||'USD'}</span></td><td>${Number(a.quintales_deuda||0).toLocaleString('es-AR',{maximumFractionDigits:1})} qq</td><td>${a.alerta_umbral} qq</td></tr>`).join('')}</tbody></table>`
+      :'<div class="empty">No hay arrendadores cargados</div>';
+  }catch(e){document.getElementById('tabla-arrendadores').innerHTML=errMsg(e);}
+}
+
+function showEmpty(id){document.getElementById(id).innerHTML='<div class="empty">Configurá la URL de Sheets primero</div>';}
+function errMsg(e){return`<div class="empty">Error: ${e.message}</div>`;}
+
+function renderDashboard(){
+  const alertas=saldosData.filter(d=>d.en_alerta);
+  const totalQQ=saldosData.reduce((s,d)=>s+Number(d.saldo_pendiente||0),0);
+  document.getElementById('d-total').textContent=saldosData.length;
+  document.getElementById('d-alertas').textContent=alertas.length;
+  document.getElementById('d-qq').textContent=totalQQ.toLocaleString('es-AR',{maximumFractionDigits:0})+' qq';
+  document.getElementById('d-mov').textContent=movData.length;
+  document.getElementById('tabla-alertas').innerHTML=alertas.length
+    ?`<table><thead><tr><th>Arrendador</th><th>Saldo</th><th>Umbral</th><th>Estado</th></tr></thead><tbody>${alertas.map(a=>`<tr class="alerta"><td><strong>${a.nombre}</strong></td><td>${Number(a.saldo_pendiente||0).toLocaleString('es-AR',{maximumFractionDigits:1})} qq</td><td>${a.alerta_umbral} qq</td><td><span class="badge badge-red">⚠ Alerta</span></td></tr>`).join('')}</tbody></table>`
+    :'<div class="empty">Sin alertas activas</div>';
+  renderCharts();
+}
+
+function renderCharts(){
+  const top=[...saldosData].sort((a,b)=>Number(b.saldo_pendiente||0)-Number(a.saldo_pendiente||0)).slice(0,10);
+  const ctx1=document.getElementById('chart-saldos').getContext('2d');
+  if(chartSaldos)chartSaldos.destroy();
+  chartSaldos=new Chart(ctx1,{type:'bar',data:{labels:top.map(d=>d.nombre.split(' ')[0]),datasets:[{data:top.map(d=>Number(d.saldo_pendiente||0)),backgroundColor:top.map(d=>d.en_alerta?'rgba(192,90,74,.7)':'rgba(201,168,76,.55)'),borderColor:top.map(d=>d.en_alerta?'#c05a4a':'#c9a84c'),borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6b6760',font:{family:'IBM Plex Mono',size:10}},grid:{color:'rgba(255,255,255,.04)'}},y:{ticks:{color:'#6b6760',font:{family:'IBM Plex Mono',size:10}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+  const byMonth={};
+  movData.forEach(m=>{const p=(m.fecha||'').split('/');if(p.length>=3){const k=p[1]+'/'+p[2];byMonth[k]=(byMonth[k]||0)+Number(m.quintales||0);}});
+  const months=Object.keys(byMonth).sort().slice(-6);
+  const ctx2=document.getElementById('chart-mov').getContext('2d');
+  if(chartMov)chartMov.destroy();
+  chartMov=new Chart(ctx2,{type:'line',data:{labels:months.length?months:['Sin datos'],datasets:[{data:months.map(k=>byMonth[k]||0),borderColor:'#c9a84c',backgroundColor:'rgba(201,168,76,.08)',tension:.35,fill:true,pointBackgroundColor:'#c9a84c',pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6b6760',font:{family:'IBM Plex Mono',size:10}},grid:{color:'rgba(255,255,255,.04)'}},y:{ticks:{color:'#6b6760',font:{family:'IBM Plex Mono',size:10}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+}
+
+function renderSaldos(data){
+  if(!data.length){document.getElementById('tabla-saldos').innerHTML='<div class="empty">No hay arrendadores</div>';return;}
+  document.getElementById('tabla-saldos').innerHTML=`<table><thead><tr><th>Arrendador</th><th>Campo</th><th>Grano</th><th>Saldo</th><th>Progreso</th><th>Estado</th><th></th></tr></thead><tbody>${data.map(d=>{
+    const s=Number(d.saldo_pendiente||0),total=Number(d.quintales_deuda||0)||1;
+    const pct=Math.max(0,Math.min(100,(s/total)*100));
+    const color=d.en_alerta?'var(--red)':pct<40?'var(--gold)':'var(--green)';
+    return`<tr class="${d.en_alerta?'alerta':''}"><td><strong>${d.nombre}</strong><br><span style="font-size:10px;color:var(--ink3)">${d.telefono||''}</span></td><td style="color:var(--ink3);font-size:11px">${d.campo||'—'}</td><td><span class="badge badge-gold">${d.grano||'—'}</span></td><td><strong>${s.toLocaleString('es-AR',{maximumFractionDigits:1})} qq</strong><br><span style="font-size:10px;color:var(--ink3)">de ${total.toLocaleString('es-AR',{maximumFractionDigits:0})}</span></td><td><div style="display:flex;align-items:center;gap:8px"><div class="saldo-bar"><div class="saldo-fill" style="width:${pct}%;background:${color}"></div></div><span style="font-size:10px;color:var(--ink3)">${pct.toFixed(0)}%</span></div></td><td>${d.en_alerta?'<span class="badge badge-red">⚠ alerta</span>':'<span class="badge badge-green">OK</span>'}</td><td><button class="btn btn-ghost btn-sm" onclick="openModal(\'movimiento\')">+ pedido</button></td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+function filterSaldos(q){renderSaldos(saldosData.filter(d=>(d.nombre||'').toLowerCase().includes(q.toLowerCase())||(d.campo||'').toLowerCase().includes(q.toLowerCase())));}
+
+function renderMovimientos(data){
+  if(!data.length){document.getElementById('tabla-movimientos').innerHTML='<div class="empty">Sin movimientos</div>';return;}
+  document.getElementById('tabla-movimientos').innerHTML=`<table><thead><tr><th>#</th><th>Fecha</th><th>Arrendador</th><th>QQ</th><th>Precio</th><th>Moneda</th><th>Total</th><th>Obs.</th></tr></thead><tbody>${[...data].reverse().map(m=>`<tr><td style="color:var(--ink3);font-size:10px">${m.id}</td><td style="font-size:11px">${m.fecha}</td><td><strong>${m.arrendador_nombre}</strong></td><td style="font-weight:500;color:var(--gold)">${Number(m.quintales||0).toLocaleString('es-AR',{maximumFractionDigits:1})} qq</td><td style="font-size:11px">${Number(m.precio_quintal||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</td><td><span class="badge ${m.moneda==='USD'?'badge-green':'badge-gray'}">${m.moneda}</span></td><td>${Number(m.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</td><td style="font-size:10px;color:var(--ink3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${m.observaciones||''}</td></tr>`).join('')}</tbody></table>`;
+}
+
+// ── PDF con Gemini ────────────────────────────────────────────
+const PROMPT_CONTRATO=`Analizá este contrato de arrendamiento rural argentino y extraé los datos clave. Respondé ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:\n{"arrendador_nombre":"","arrendador_dni":"","campo_ubicacion":"","hectareas_total":0,"grano":"","qq_por_hectarea":0,"qq_total_anual":0,"moneda":"ARS","fecha_inicio":"","fecha_fin":"","duracion_anos":0,"observaciones":""}`;
+const PROMPT_FACTURA=`Analizá esta factura de venta de quintales de un productor agropecuario argentino. Respondé ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:\n{"vendedor_nombre":"","vendedor_cuit":"","comprador_nombre":"","fecha":"","grano":"","quintales":0,"precio_unitario":0,"moneda":"ARS","total":0,"numero_factura":"","cae":""}`;
+
+function switchPdfTab(tab,el){
+  document.querySelectorAll('#page-subir .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('pdf-contrato').style.display=tab==='contrato'?'':'none';
+  document.getElementById('pdf-factura').style.display=tab==='factura'?'':'none';
+}
+
+async function handlePdf(tipo,file){
+  if(!file)return;
+  if(!GEMINI_KEY){setStatus(tipo,'err','Necesitás configurar tu API Key de Gemini primero. Es gratuita → andá a Configuración.');return;}
+  setStatus(tipo,'loading','Enviando PDF a Gemini...');
+  document.getElementById('result-'+tipo).innerHTML='';
+  document.getElementById('actions-'+tipo).style.display='none';
+  try{
+    const base64=await fileToBase64(file);
+    const prompt=tipo==='contrato'?PROMPT_CONTRATO:PROMPT_FACTURA;
+    const resp=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'application/pdf',data:base64}},{text:prompt}]}]})
+    });
+    const data=await resp.json();
+    if(data.error)throw new Error(data.error.message);
+    const raw=data.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(clean);
+    if(tipo==='contrato'){extractedContrato=parsed;renderResultContrato(parsed);}
+    else{extractedFactura=parsed;renderResultFactura(parsed);}
+    setStatus(tipo,'ok','Extracción completada · Revisá los datos y confirmá para guardar en Sheets.');
+    document.getElementById('actions-'+tipo).style.display='';
+  }catch(e){setStatus(tipo,'err','Error: '+e.message);}
+}
+
+function renderResultContrato(d){
+  document.getElementById('result-contrato').innerHTML=`<div class="extract-result">${fld('Arrendador',d.arrendador_nombre)}${fld('DNI/CUIT',d.arrendador_dni)}${fld('Campo',d.campo_ubicacion)}${fld('Hectáreas',d.hectareas_total+' ha')}${fld('Grano',d.grano)}${fld('QQ/ha/año',d.qq_por_hectarea)}${fld('QQ total anual',d.qq_total_anual+' qq')}${fld('Moneda',d.moneda)}${fld('Vigencia',d.fecha_inicio+' → '+d.fecha_fin)}</div>`;
+  const el=document.getElementById('c-qq-override');
+  if(el)el.placeholder=d.qq_total_anual+' (calculado del contrato)';
+}
+
+function renderResultFactura(d){
+  document.getElementById('result-factura').innerHTML=`<div class="extract-result">${fld('Vendedor (arrendador)',d.vendedor_nombre)}${fld('CUIT',d.vendedor_cuit)}${fld('Fecha',d.fecha)}${fld('Grano',d.grano)}${fld('Quintales',d.quintales+' qq')}${fld('Precio/qq','$'+Number(d.precio_unitario).toLocaleString('es-AR'))}${fld('Total','$'+Number(d.total).toLocaleString('es-AR'))}${fld('Nro. factura',d.numero_factura)}</div>`;
+  populateArrSelect('f-arrendador-sel',d.vendedor_nombre);
+}
+
+function fld(k,v){return`<div class="extract-field"><span class="extract-key">${k}</span><span class="extract-val">${v||'—'}</span></div>`;}
+function setStatus(tipo,state,msg){const icons={loading:'<div class="spinner"></div>',ok:'✓',err:'✗'};document.getElementById('status-'+tipo).innerHTML=`<div class="extract-status ${state}">${icons[state]}<span>${msg}</span></div>`;}
+function resetPdf(tipo){['result-','status-'].forEach(p=>{document.getElementById(p+tipo).innerHTML='';});document.getElementById('actions-'+tipo).style.display='none';if(tipo==='contrato')extractedContrato=null;else extractedFactura=null;}
+
+async function guardarDesdeContrato(){
+  if(!extractedContrato)return;
+  const d=extractedContrato;
+  const qq=parseFloat(document.getElementById('c-qq-override').value)||d.qq_total_anual||0;
+  const umbral=parseFloat(document.getElementById('c-umbral').value)||20;
+  const btn=document.getElementById('btn-guardar-contrato');
+  btn.textContent='Guardando...';btn.disabled=true;
+  try{
+    const res=await api('addArrendador',{nombre:d.arrendador_nombre,telefono:'',campo:d.campo_ubicacion,hectareas:d.hectareas_total,grano:d.grano||'Soja',moneda:d.moneda||'ARS',quintales_deuda:qq,alerta_umbral:umbral});
+    await api('addContrato',{arrendador_id:res.id,campaña:d.fecha_inicio?d.fecha_inicio.slice(0,4):'',fecha_inicio:d.fecha_inicio||'',fecha_fin:d.fecha_fin||'',quintales_pactados:qq,tipo:'arrendamiento'});
+    setStatus('contrato','ok','¡Arrendador y contrato guardados en Google Sheets!');
+    document.getElementById('actions-contrato').style.display='none';
+    resetPdf('contrato');loadAll();
+  }catch(e){setStatus('contrato','err','Error al guardar: '+e.message);}
+  btn.textContent='Guardar arrendador en Sheets';btn.disabled=false;
+}
+
+async function guardarDesdeFactura(){
+  if(!extractedFactura)return;
+  const d=extractedFactura;
+  const sel=document.getElementById('f-arrendador-sel');
+  const btn=document.getElementById('btn-guardar-factura');
+  btn.textContent='Guardando...';btn.disabled=true;
+  try{
+    await api('addMovimiento',{arrendador_id:sel.value,arrendador_nombre:sel.selectedOptions[0]?.text.split(' (')[0]||d.vendedor_nombre,quintales:d.quintales,precio_quintal:d.precio_unitario,fecha:d.fecha,moneda:d.moneda||'ARS',observaciones:'Factura '+d.numero_factura+' · CAE '+d.cae});
+    setStatus('factura','ok','¡Movimiento registrado en Google Sheets!');
+    document.getElementById('actions-factura').style.display='none';
+    resetPdf('factura');loadAll();
+  }catch(e){setStatus('factura','err','Error al guardar: '+e.message);}
+  btn.textContent='Registrar movimiento en Sheets';btn.disabled=false;
+}
+
+function openModal(type){if(type==='movimiento')populateArrSelect('mov-arr');document.getElementById('overlay-'+type).classList.add('open');}
+function closeModal(type){document.getElementById('overlay-'+type).classList.remove('open');}
+function closeBg(e,type){if(e.target===document.getElementById('overlay-'+type))closeModal(type);}
+
+function populateArrSelect(selId,hint=''){
+  const sel=document.getElementById(selId);if(!sel)return;
+  const data=saldosData.length?saldosData:arrData;
+  sel.innerHTML=`<option value="">Seleccioná...</option>`+data.map(a=>{
+    const match=hint&&a.nombre.toLowerCase().includes(hint.toLowerCase().split(' ')[0]);
+    return`<option value="${a.id}" ${match?'selected':''}>${a.nombre} (${Number(a.saldo_pendiente||a.quintales_deuda||0).toLocaleString('es-AR',{maximumFractionDigits:1})} qq)</option>`;
+  }).join('');
+}
+
+function calcMov(){const qq=parseFloat(document.getElementById('mov-qq').value)||0;const p=parseFloat(document.getElementById('mov-precio').value)||0;const m=document.getElementById('mov-moneda').value;document.getElementById('mov-total').value=qq&&p?`${m} ${(qq*p).toLocaleString('es-AR',{minimumFractionDigits:2})}`:''}
+
+async function guardarMovimiento(){
+  const el=document.getElementById('mov-arr');
+  const id=el.value,nombre=el.selectedOptions[0]?.text.split(' (')[0]||'';
+  const qq=parseFloat(document.getElementById('mov-qq').value);
+  if(!id||!qq){alert('Completá arrendador y quintales.');return;}
+  try{
+    await api('addMovimiento',{arrendador_id:id,arrendador_nombre:nombre,quintales:qq,precio_quintal:parseFloat(document.getElementById('mov-precio').value)||0,fecha:new Date(document.getElementById('mov-fecha').value+'T12:00:00').toLocaleDateString('es-AR'),moneda:document.getElementById('mov-moneda').value,observaciones:document.getElementById('mov-obs').value});
+    closeModal('movimiento');['mov-qq','mov-precio','mov-obs'].forEach(id=>{document.getElementById(id).value='';});loadAll();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function guardarArrendador(){
+  const nombre=document.getElementById('a-nombre').value;
+  if(!nombre){alert('Nombre obligatorio.');return;}
+  try{
+    await api('addArrendador',{nombre,telefono:document.getElementById('a-tel').value,campo:document.getElementById('a-campo').value,hectareas:parseFloat(document.getElementById('a-ha').value)||0,grano:document.getElementById('a-grano').value,moneda:document.getElementById('a-moneda').value,quintales_deuda:parseFloat(document.getElementById('a-qq').value)||0,alerta_umbral:parseFloat(document.getElementById('a-umbral').value)||20});
+    closeModal('arrendador');loadAll();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+function saveSheets(){SHEETS_URL=document.getElementById('input-sheets-url').value.trim();localStorage.setItem('sheets_url',SHEETS_URL);checkBanner();document.getElementById('conn-sheets').textContent='✓ Guardado';}
+async function testSheets(){SHEETS_URL=document.getElementById('input-sheets-url').value.trim();const el=document.getElementById('conn-sheets');el.textContent='Probando...';try{const d=await api('getArrendadores');el.textContent=`✓ Conexión OK · ${d.length} arrendadores`;el.style.color='var(--green)';}catch(e){el.textContent='✗ '+e.message;el.style.color='var(--red)';}}
+function saveGeminiKey(){GEMINI_KEY=document.getElementById('input-gemini-key').value.trim();localStorage.setItem('gemini_key',GEMINI_KEY);document.getElementById('conn-gemini').textContent=GEMINI_KEY?'✓ API Key de Gemini guardada':'Eliminada';}
+
+function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=()=>rej(new Error('Error leyendo archivo'));r.readAsDataURL(file);});}
+</script>
+</body>
+</html>
