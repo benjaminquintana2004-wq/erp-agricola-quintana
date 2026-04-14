@@ -3,7 +3,15 @@
   publish = "public"
   # Puerto local para desarrollo
   port = 8888
+  # Carpeta donde están las Netlify Functions
+  functions = "netlify/functions"
 
 [build]
   # Carpeta que se publica en producción
   publish = "public"
+  # Carpeta de funciones en producción
+  functions = "netlify/functions"
+
+[functions]
+  # Directorio de funciones serverless
+  directory = "netlify/functions"
