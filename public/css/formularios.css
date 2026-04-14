@@ -1,0 +1,249 @@
+/* ==============================================
+   formularios.css — Modales, formularios e inputs
+   ============================================== */
+
+/* ==============================================
+   MODAL
+   ============================================== */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: var(--espacio-xl);
+    animation: fadeIn 0.2s ease;
+}
+
+.modal {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    width: 100%;
+    max-width: 600px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--sombra-lg);
+    animation: modalEntrar 0.2s ease;
+}
+
+.modal-grande {
+    max-width: 800px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes modalEntrar {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Header del modal */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.modal-titulo {
+    font-size: var(--texto-xl);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+.modal-btn-cerrar {
+    background: none;
+    border: none;
+    color: var(--color-texto-tenue);
+    cursor: pointer;
+    padding: var(--espacio-xs);
+    border-radius: var(--radio-sm);
+    display: flex;
+    transition: color var(--transicion-rapida);
+}
+
+.modal-btn-cerrar:hover {
+    color: var(--color-texto);
+}
+
+.modal-btn-cerrar svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Body del modal */
+.modal-body {
+    padding: var(--espacio-lg);
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Footer del modal */
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--espacio-md);
+    padding: var(--espacio-lg);
+    border-top: 1px solid var(--color-borde);
+}
+
+/* ==============================================
+   FORMULARIO
+   ============================================== */
+
+/* Grupo de campo (label + input) */
+.campo-grupo {
+    margin-bottom: var(--espacio-lg);
+}
+
+.campo-grupo:last-child {
+    margin-bottom: 0;
+}
+
+/* Label */
+.campo-label {
+    display: block;
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    color: var(--color-texto-secundario);
+    margin-bottom: var(--espacio-xs);
+}
+
+.campo-label .campo-requerido {
+    color: var(--color-error);
+    margin-left: 2px;
+}
+
+/* Input, select, textarea */
+.campo-input,
+.campo-select,
+.campo-textarea {
+    width: 100%;
+    padding: var(--espacio-sm) var(--espacio-md);
+    background-color: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    color: var(--color-texto);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-base);
+    transition: border-color var(--transicion-rapida);
+    outline: none;
+}
+
+.campo-input:focus,
+.campo-select:focus,
+.campo-textarea:focus {
+    border-color: var(--color-dorado);
+}
+
+.campo-input::placeholder,
+.campo-textarea::placeholder {
+    color: var(--color-texto-tenue);
+}
+
+/* Select */
+.campo-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6760' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+/* Textarea */
+.campo-textarea {
+    min-height: 80px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+/* Campos en fila (2 columnas) */
+.campos-fila {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--espacio-md);
+}
+
+/* Validación visual */
+.campo-input.valido {
+    border-color: var(--color-verde);
+}
+
+.campo-input.invalido {
+    border-color: var(--color-error);
+}
+
+/* Mensaje de error del campo */
+.campo-error {
+    font-size: var(--texto-xs);
+    color: var(--color-error);
+    margin-top: var(--espacio-xs);
+    display: none;
+}
+
+.campo-error.visible {
+    display: block;
+}
+
+/* Ayuda del campo */
+.campo-ayuda {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    margin-top: var(--espacio-xs);
+}
+
+/* Separador dentro del formulario */
+.form-separador {
+    border: none;
+    border-top: 1px solid var(--color-borde);
+    margin: var(--espacio-lg) 0;
+}
+
+/* Título de sección dentro del formulario */
+.form-seccion-titulo {
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    color: var(--color-dorado);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--espacio-md);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .modal {
+        max-height: 95vh;
+        margin: var(--espacio-md);
+    }
+
+    .campos-fila {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-footer {
+        flex-direction: column;
+    }
+
+    .modal-footer button {
+        width: 100%;
+    }
+}

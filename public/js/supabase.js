@@ -46,13 +46,14 @@ async function ejecutarConsulta(consulta, descripcion) {
         if (error) {
             console.error(`Error al ${descripcion}:`, error.message);
             mostrarError(`No se pudo ${descripcion}. Intentá de nuevo.`);
-            return null;
+            return undefined;
         }
-        return data;
+        // Para insert/update sin .select(), data es null pero la operación fue exitosa
+        return data !== undefined ? data : [];
     } catch (err) {
         console.error(`Error inesperado al ${descripcion}:`, err);
         mostrarError(`Ocurrió un error inesperado. Revisá tu conexión a internet.`);
-        return null;
+        return undefined;
     }
 }
 

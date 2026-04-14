@@ -1,0 +1,236 @@
+/* ==============================================
+   tablas.css — Estilos de tablas de datos
+   ============================================== */
+
+/* Barra superior: búsqueda + acciones */
+.tabla-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+    flex-wrap: wrap;
+}
+
+.tabla-toolbar-izq {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    flex: 1;
+}
+
+/* Campo de búsqueda */
+.tabla-busqueda {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    background-color: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-sm) var(--espacio-md);
+    flex: 1;
+    max-width: 400px;
+    transition: border-color var(--transicion-rapida);
+}
+
+.tabla-busqueda:focus-within {
+    border-color: var(--color-dorado);
+}
+
+.tabla-busqueda svg {
+    width: 18px;
+    height: 18px;
+    color: var(--color-texto-tenue);
+    flex-shrink: 0;
+}
+
+.tabla-busqueda input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--color-texto);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-base);
+    outline: none;
+}
+
+.tabla-busqueda input::placeholder {
+    color: var(--color-texto-tenue);
+}
+
+/* Contador de resultados */
+.tabla-contador {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-tenue);
+    white-space: nowrap;
+}
+
+/* Contenedor de la tabla */
+.tabla-contenedor {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    overflow: hidden;
+}
+
+/* Tabla */
+.tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--texto-base);
+}
+
+/* Header de la tabla */
+.tabla thead {
+    background-color: var(--color-fondo-secundario);
+}
+
+.tabla th {
+    padding: var(--espacio-md) var(--espacio-lg);
+    text-align: left;
+    font-weight: 600;
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--color-borde);
+    white-space: nowrap;
+    cursor: default;
+    user-select: none;
+}
+
+.tabla th.ordenable {
+    cursor: pointer;
+}
+
+.tabla th.ordenable:hover {
+    color: var(--color-dorado);
+}
+
+/* Filas */
+.tabla td {
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+    color: var(--color-texto);
+    vertical-align: middle;
+}
+
+/* Filas alternadas */
+.tabla tbody tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Hover en filas */
+.tabla tbody tr:hover {
+    background-color: var(--color-fondo-hover);
+}
+
+/* Última fila sin borde inferior */
+.tabla tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Celda de acciones (botones editar/eliminar) */
+.tabla-acciones {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+}
+
+.tabla-btn {
+    background: none;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-sm);
+    color: var(--color-texto-secundario);
+    cursor: pointer;
+    padding: var(--espacio-xs) var(--espacio-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transicion-rapida);
+}
+
+.tabla-btn:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+    background-color: var(--color-dorado-suave);
+}
+
+.tabla-btn.btn-eliminar:hover {
+    border-color: var(--color-error);
+    color: var(--color-error);
+    background-color: rgba(201, 76, 76, 0.15);
+}
+
+.tabla-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Estado vacío */
+.tabla-vacia {
+    padding: var(--espacio-2xl);
+    text-align: center;
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-lg);
+}
+
+.tabla-vacia p {
+    margin-top: var(--espacio-sm);
+    font-size: var(--texto-sm);
+    color: var(--color-texto-tenue);
+}
+
+/* Badges de estado */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: var(--radio-completo);
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.badge-verde {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-rojo {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+.badge-amarillo {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.badge-gris {
+    background-color: rgba(107, 103, 96, 0.2);
+    color: var(--color-inactivo);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .tabla-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .tabla-busqueda {
+        max-width: 100%;
+    }
+
+    .tabla-contenedor {
+        overflow-x: auto;
+    }
+
+    .tabla th,
+    .tabla td {
+        padding: var(--espacio-sm) var(--espacio-md);
+        font-size: var(--texto-sm);
+    }
+}

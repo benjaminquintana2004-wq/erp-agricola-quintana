@@ -1,0 +1,301 @@
+/* ==============================================
+   layout.css — Sidebar, header y estructura general
+   Este archivo define el "marco" de todas las páginas:
+   sidebar a la izquierda y contenido a la derecha.
+   ============================================== */
+
+/* Contenedor principal de la app */
+.app-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ==============================================
+   SIDEBAR — Navegación lateral fija
+   ============================================== */
+
+.sidebar {
+    width: var(--ancho-sidebar);
+    background-color: var(--color-fondo-secundario);
+    border-right: 1px solid var(--color-borde);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    overflow-y: auto;
+}
+
+/* Logo/título en la parte superior del sidebar */
+.sidebar-logo {
+    padding: var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+}
+
+.sidebar-logo-icono {
+    width: 40px;
+    height: 40px;
+    background-color: var(--color-dorado-suave);
+    border-radius: var(--radio-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sidebar-logo-icono svg {
+    width: 22px;
+    height: 22px;
+    color: var(--color-dorado);
+}
+
+.sidebar-logo-texto {
+    font-size: var(--texto-base);
+    font-weight: 700;
+    color: var(--color-texto);
+    line-height: 1.2;
+}
+
+.sidebar-logo-subtexto {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    font-weight: 400;
+}
+
+/* Navegación */
+.sidebar-nav {
+    flex: 1;
+    padding: var(--espacio-md) 0;
+}
+
+.sidebar-seccion-titulo {
+    padding: var(--espacio-md) var(--espacio-lg) var(--espacio-xs);
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    color: var(--color-texto-tenue);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    padding: var(--espacio-sm) var(--espacio-lg);
+    margin: 2px var(--espacio-sm);
+    border-radius: var(--radio-md);
+    color: var(--color-texto-secundario);
+    text-decoration: none;
+    font-size: var(--texto-base);
+    font-weight: 500;
+    transition: all var(--transicion-rapida);
+    cursor: pointer;
+}
+
+.sidebar-link:hover {
+    background-color: var(--color-fondo-hover);
+    color: var(--color-texto);
+}
+
+.sidebar-link.activo {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.sidebar-link svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+/* Badge de notificación en el sidebar */
+.sidebar-badge {
+    margin-left: auto;
+    background-color: var(--color-error);
+    color: white;
+    font-size: var(--texto-xs);
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--radio-completo);
+    min-width: 20px;
+    text-align: center;
+}
+
+/* Footer del sidebar (usuario) */
+.sidebar-footer {
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-top: 1px solid var(--color-borde);
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+}
+
+.sidebar-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radio-completo);
+    background-color: var(--color-dorado-suave);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.sidebar-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.sidebar-avatar-iniciales {
+    font-size: var(--texto-sm);
+    font-weight: 700;
+    color: var(--color-dorado);
+}
+
+.sidebar-usuario-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.sidebar-usuario-nombre {
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    color: var(--color-texto);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-usuario-rol {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+}
+
+.sidebar-btn-salir {
+    background: none;
+    border: none;
+    color: var(--color-texto-tenue);
+    cursor: pointer;
+    padding: var(--espacio-xs);
+    border-radius: var(--radio-sm);
+    transition: color var(--transicion-rapida);
+}
+
+.sidebar-btn-salir:hover {
+    color: var(--color-error);
+}
+
+.sidebar-btn-salir svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* ==============================================
+   CONTENIDO PRINCIPAL
+   ============================================== */
+
+.contenido-principal {
+    flex: 1;
+    margin-left: var(--ancho-sidebar);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* Header de página */
+.pagina-header {
+    padding: var(--espacio-lg) var(--espacio-xl);
+    border-bottom: 1px solid var(--color-borde);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--espacio-lg);
+    background-color: var(--color-fondo);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.pagina-header-izq {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-xs);
+}
+
+.pagina-titulo {
+    font-size: var(--texto-2xl);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+.pagina-subtitulo {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+}
+
+.pagina-header-der {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+}
+
+/* Área de contenido (donde va la tabla, formularios, etc.) */
+.pagina-contenido {
+    padding: var(--espacio-xl);
+    flex: 1;
+}
+
+/* ==============================================
+   RESPONSIVE — Tablet
+   ============================================== */
+
+@media (max-width: 1024px) {
+    .sidebar {
+        width: var(--ancho-sidebar-colapsada);
+    }
+
+    .sidebar-logo-texto,
+    .sidebar-logo-subtexto,
+    .sidebar-seccion-titulo,
+    .sidebar-link span,
+    .sidebar-usuario-info {
+        display: none;
+    }
+
+    .sidebar-link {
+        justify-content: center;
+        padding: var(--espacio-md);
+        margin: 2px var(--espacio-xs);
+    }
+
+    .sidebar-logo {
+        justify-content: center;
+    }
+
+    .sidebar-footer {
+        justify-content: center;
+    }
+
+    .sidebar-badge {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        font-size: 10px;
+        padding: 1px 5px;
+    }
+
+    .sidebar-link {
+        position: relative;
+    }
+
+    .contenido-principal {
+        margin-left: var(--ancho-sidebar-colapsada);
+    }
+}
