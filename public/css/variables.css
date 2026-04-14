@@ -1,0 +1,282 @@
+/* ==============================================
+   variables.css — Paleta de colores y estilos base
+   Todos los colores y tamaños se definen acá.
+   Nunca hardcodear un color en otro archivo.
+   ============================================== */
+
+:root {
+    /* --- Colores principales --- */
+    --color-fondo: #0f0e0c;
+    --color-fondo-secundario: #1a1916;
+    --color-fondo-tarjeta: #21201d;
+    --color-fondo-hover: #2a2926;
+    --color-borde: #3a3835;
+
+    /* --- Texto --- */
+    --color-texto: #e8e4dc;
+    --color-texto-secundario: #a09b90;
+    --color-texto-tenue: #6b6760;
+
+    /* --- Acentos --- */
+    --color-dorado: #c9a84c;
+    --color-dorado-hover: #d4b85e;
+    --color-dorado-suave: rgba(201, 168, 76, 0.15);
+    --color-verde: #4a9e6e;
+    --color-verde-hover: #5ab87e;
+    --color-verde-suave: rgba(74, 158, 110, 0.15);
+
+    /* --- Estados --- */
+    --color-exito: #4a9e6e;
+    --color-error: #c94c4c;
+    --color-alerta: #c9a84c;
+    --color-inactivo: #6b6760;
+
+    /* --- Tipografía --- */
+    --fuente-principal: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --fuente-mono: 'JetBrains Mono', 'Consolas', monospace;
+
+    /* Tamaños generosos — el usuario principal tiene 50+ años */
+    --texto-xs: 0.75rem;    /* 12px */
+    --texto-sm: 0.875rem;   /* 14px */
+    --texto-base: 1rem;     /* 16px */
+    --texto-lg: 1.125rem;   /* 18px */
+    --texto-xl: 1.25rem;    /* 20px */
+    --texto-2xl: 1.5rem;    /* 24px */
+    --texto-3xl: 1.875rem;  /* 30px */
+    --texto-4xl: 2.25rem;   /* 36px */
+
+    /* --- Espaciado --- */
+    --espacio-xs: 0.25rem;   /* 4px */
+    --espacio-sm: 0.5rem;    /* 8px */
+    --espacio-md: 1rem;      /* 16px */
+    --espacio-lg: 1.5rem;    /* 24px */
+    --espacio-xl: 2rem;      /* 32px */
+    --espacio-2xl: 3rem;     /* 48px */
+
+    /* --- Bordes --- */
+    --radio-sm: 4px;
+    --radio-md: 8px;
+    --radio-lg: 12px;
+    --radio-completo: 9999px;
+
+    /* --- Sombras --- */
+    --sombra-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --sombra-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --sombra-lg: 0 10px 25px rgba(0, 0, 0, 0.4);
+
+    /* --- Transiciones --- */
+    --transicion-rapida: 150ms ease;
+    --transicion-normal: 250ms ease;
+
+    /* --- Sidebar --- */
+    --ancho-sidebar: 260px;
+    --ancho-sidebar-colapsada: 70px;
+}
+
+/* ==============================================
+   Reset y estilos globales
+   ============================================== */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--fuente-principal);
+    background-color: var(--color-fondo);
+    color: var(--color-texto);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: var(--color-dorado);
+    text-decoration: none;
+    transition: color var(--transicion-rapida);
+}
+
+a:hover {
+    color: var(--color-dorado-hover);
+}
+
+/* ==============================================
+   Componentes reutilizables
+   ============================================== */
+
+/* Botón principal (dorado) */
+.btn-primario {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-md) var(--espacio-xl);
+    background-color: var(--color-dorado);
+    color: var(--color-fondo);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-base);
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radio-md);
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    text-decoration: none;
+}
+
+.btn-primario:hover {
+    background-color: var(--color-dorado-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--sombra-md);
+}
+
+.btn-primario:active {
+    transform: translateY(0);
+}
+
+.btn-primario:disabled {
+    background-color: var(--color-inactivo);
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Botón secundario (borde) */
+.btn-secundario {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-md) var(--espacio-xl);
+    background-color: transparent;
+    color: var(--color-texto);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+}
+
+.btn-secundario:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+    background-color: var(--color-dorado-suave);
+}
+
+/* Botón peligroso (eliminar) */
+.btn-peligro {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-md) var(--espacio-xl);
+    background-color: var(--color-error);
+    color: white;
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-base);
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radio-md);
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+}
+
+.btn-peligro:hover {
+    background-color: #d45555;
+    transform: translateY(-1px);
+}
+
+/* Toast / notificación */
+.toast {
+    position: fixed;
+    bottom: var(--espacio-xl);
+    right: var(--espacio-xl);
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-radius: var(--radio-md);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    z-index: 9999;
+    animation: toastEntrar 0.3s ease, toastSalir 0.3s ease 3.7s forwards;
+    max-width: 400px;
+    box-shadow: var(--sombra-lg);
+}
+
+.toast-exito {
+    background-color: var(--color-verde);
+    color: white;
+}
+
+.toast-error {
+    background-color: var(--color-error);
+    color: white;
+}
+
+.toast-alerta {
+    background-color: var(--color-alerta);
+    color: var(--color-fondo);
+}
+
+@keyframes toastEntrar {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toastSalir {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+}
+
+/* Spinner de carga */
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--color-borde);
+    border-top-color: var(--color-dorado);
+    border-radius: 50%;
+    animation: girar 0.8s linear infinite;
+}
+
+.spinner-grande {
+    width: 48px;
+    height: 48px;
+    border-width: 4px;
+}
+
+@keyframes girar {
+    to { transform: rotate(360deg); }
+}
+
+/* Estado de carga para toda la página */
+.cargando-pagina {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: var(--espacio-lg);
+}
+
+.cargando-pagina p {
+    color: var(--color-texto-secundario);
+    font-size: var(--texto-lg);
+}

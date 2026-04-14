@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERP Agrícola Quintana</title>
+
+    <!-- Fuente Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Estilos -->
+    <link rel="stylesheet" href="/css/variables.css">
+</head>
+<body>
+
+    <!-- Pantalla de carga mientras verifica sesión y rol -->
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando sistema...</p>
+    </div>
+
+    <!-- Mensaje si no tiene acceso -->
+    <div id="pantalla-sin-acceso" class="cargando-pagina" style="display: none;">
+        <div class="login-logo" style="background-color: rgba(201, 76, 76, 0.15); width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#c94c4c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+        </div>
+        <h2 style="color: var(--color-error); font-size: var(--texto-2xl);">Sin acceso</h2>
+        <p style="color: var(--color-texto-secundario); max-width: 400px; text-align: center;">
+            Tu cuenta no está registrada en el sistema.
+            Pedile al administrador que te dé de alta.
+        </p>
+        <button class="btn-secundario" onclick="cerrarSesion()" style="margin-top: var(--espacio-lg);">
+            Cerrar sesión
+        </button>
+    </div>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Nuestros scripts -->
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+
+    <script>
+        // ==============================================
+        // Punto de entrada principal de la app
+        // Verifica sesión → obtiene rol → redirige al dashboard
+        // ==============================================
+
+        async function inicializarApp() {
+            // 1. Cargar credenciales
+            const configOk = await cargarConfiguracion();
+            if (!configOk) {
+                window.location.href = '/login.html';
+                return;
+            }
+
+            // 2. Inicializar Supabase
+            inicializarSupabase();
+            escucharCambiosDeSesion();
+
+            // 3. Verificar si hay usuario logueado
+            const user = await obtenerUsuarioActual();
+            if (!user) {
+                window.location.href = '/login.html';
+                return;
+            }
+
+            // 4. Obtener su rol
+            const rol = await obtenerRolUsuario(user.id);
+
+            if (!rol) {
+                // Tiene cuenta Google pero no está registrado en la tabla usuarios
+                document.getElementById('pantalla-carga').style.display = 'none';
+                document.getElementById('pantalla-sin-acceso').style.display = 'flex';
+                return;
+            }
+
+            // 5. Guardar datos del usuario en memoria para uso global
+            window.__USUARIO__ = {
+                id: user.id,
+                email: user.email,
+                nombre: user.user_metadata?.full_name || user.email,
+                avatar: user.user_metadata?.avatar_url || null,
+                rol: rol
+            };
+
+            // 6. Cargar el dashboard
+            // Por ahora mostramos un mensaje temporal hasta construir el dashboard en el PASO 5
+            mostrarDashboardTemporal();
+        }
+
+        // Dashboard temporal — se reemplaza cuando construyamos el PASO 5
+        function mostrarDashboardTemporal() {
+            const usuario = window.__USUARIO__;
+            document.getElementById('pantalla-carga').style.display = 'none';
+
+            const contenido = document.createElement('div');
+            contenido.style.cssText = 'display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:1.5rem; padding:2rem;';
+            contenido.innerHTML = `
+                <div style="background-color: var(--color-dorado-suave); width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-dorado)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                </div>
+                <h1 style="color: var(--color-texto); font-size: var(--texto-2xl);">Bienvenido, ${usuario.nombre}</h1>
+                <p style="color: var(--color-texto-secundario); font-size: var(--texto-lg);">Rol: <strong style="color: var(--color-dorado);">${formatearRol(usuario.rol)}</strong></p>
+                <p style="color: var(--color-texto-tenue); font-size: var(--texto-base);">
+                    El sistema está conectado correctamente.
+                    <br>El dashboard se construye en el PASO 5.
+                </p>
+                <button class="btn-secundario" onclick="cerrarSesion()" style="margin-top: var(--espacio-lg);">
+                    Cerrar sesión
+                </button>
+            `;
+            document.body.appendChild(contenido);
+        }
+
+        // Formatea el rol para mostrarlo lindo
+        function formatearRol(rol) {
+            const nombres = {
+                'admin_total': 'Administrador Total',
+                'admin': 'Administrador',
+                'empleado': 'Empleado'
+            };
+            return nombres[rol] || rol;
+        }
+
+        // Arrancar
+        inicializarApp();
+    </script>
+
+</body>
+</html>

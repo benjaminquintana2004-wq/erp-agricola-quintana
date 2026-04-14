@@ -5,20 +5,28 @@
 // y trae los resultados de vuelta.
 // ==============================================
 
-// Las credenciales se cargan desde variables de entorno (archivo .env)
-// Nunca se escriben directo en el código por seguridad
-const SUPABASE_URL = window.__ENV__?.SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = window.__ENV__?.SUPABASE_ANON_KEY || '';
+// Variable global del cliente Supabase
+// Usamos "db" porque "supabase" ya la usa el CDN (window.supabase)
+// Se inicializa después de cargar las credenciales desde el servidor
+let db = null;
 
-// Verificar que las credenciales estén configuradas
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.error('Error: Las credenciales de Supabase no están configuradas.');
-    console.error('Verificá que el archivo .env tenga SUPABASE_URL y SUPABASE_ANON_KEY.');
+/**
+ * Inicializa el cliente de Supabase con las credenciales cargadas.
+ * Debe llamarse DESPUÉS de cargarConfiguracion() en config.js.
+ */
+function inicializarSupabase() {
+    const url = window.__ENV__?.SUPABASE_URL || '';
+    const key = window.__ENV__?.SUPABASE_ANON_KEY || '';
+
+    if (!url || !key) {
+        console.error('Error: Las credenciales de Supabase no están configuradas.');
+        console.error('Verificá que el archivo .env tenga SUPABASE_URL y SUPABASE_ANON_KEY.');
+        return false;
+    }
+
+    db = window.supabase.createClient(url, key);
+    return true;
 }
-
-// Crear el cliente de Supabase
-// Este objeto es el que usamos en toda la app para leer y escribir datos
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ==============================================
 // Funciones auxiliares para manejo de errores
@@ -48,19 +56,45 @@ async function ejecutarConsulta(consulta, descripcion) {
     }
 }
 
+// ==============================================
+// Sistema de notificaciones (toasts)
+// ==============================================
+
+/**
+ * Muestra un toast (notificación) al usuario.
+ * Aparece abajo a la derecha y desaparece después de 4 segundos.
+ */
+function mostrarToast(mensaje, tipo = 'exito') {
+    // Eliminar toast anterior si existe
+    const toastAnterior = document.querySelector('.toast');
+    if (toastAnterior) toastAnterior.remove();
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${tipo}`;
+    toast.textContent = mensaje;
+    document.body.appendChild(toast);
+
+    // Eliminar después de 4 segundos
+    setTimeout(() => toast.remove(), 4000);
+}
+
 /**
  * Muestra un mensaje de error visible al usuario.
- * Nunca fallar silenciosamente — el usuario siempre tiene que saber qué pasó.
  */
 function mostrarError(mensaje) {
-    // Por ahora usamos un alert simple, después lo reemplazamos por toasts
-    // cuando tengamos el sistema de UI armado
-    console.error('ERROR:', mensaje);
+    mostrarToast(mensaje, 'error');
 }
 
 /**
  * Muestra un mensaje de éxito visible al usuario.
  */
 function mostrarExito(mensaje) {
-    console.log('OK:', mensaje);
+    mostrarToast(mensaje, 'exito');
+}
+
+/**
+ * Muestra un mensaje de alerta/advertencia visible al usuario.
+ */
+function mostrarAlerta(mensaje) {
+    mostrarToast(mensaje, 'alerta');
 }

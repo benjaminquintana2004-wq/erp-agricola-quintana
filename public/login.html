@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ingresar — ERP Agrícola Quintana</title>
+
+    <!-- Fuente Inter desde Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Estilos -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/login.css">
+</head>
+<body>
+
+    <!-- Pantalla de carga mientras verifica si ya hay sesión -->
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Verificando sesión...</p>
+    </div>
+
+    <!-- Tarjeta de login (oculta hasta que confirme que no hay sesión) -->
+    <div id="pantalla-login" class="login-contenedor" style="display: none;">
+        <div class="login-tarjeta">
+
+            <!-- Logo -->
+            <div class="login-logo">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5"/>
+                    <path d="M2 12l10 5 10-5"/>
+                </svg>
+            </div>
+
+            <h1 class="login-titulo">ERP Agrícola Quintana</h1>
+            <p class="login-subtitulo">Gestión integral de arrendamientos,<br>producción y logística</p>
+
+            <!-- Botón de login con Google -->
+            <button id="btn-ingresar" class="btn-google" onclick="clickIniciarSesion()">
+                <!-- Ícono de Google -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Ingresar con Google
+            </button>
+
+            <!-- Mensaje de error -->
+            <div id="login-error" class="login-error">
+                <strong>No se pudo iniciar sesión.</strong>
+                <p id="login-error-detalle"></p>
+            </div>
+
+            <!-- Footer -->
+            <div class="login-footer">
+                <p>Sistema de uso exclusivo para personal autorizado</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase JS (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Nuestros scripts en orden -->
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+
+    <script>
+        // ==============================================
+        // Lógica de la página de login
+        // ==============================================
+
+        // Al cargar la página, verificar si ya hay una sesión activa
+        async function verificarSesionExistente() {
+            // Cargar las credenciales de Supabase
+            const configOk = await cargarConfiguracion();
+            if (!configOk) {
+                mostrarPantallaLogin();
+                mostrarErrorLogin('No se pudo conectar con el servidor. Verificá tu conexión.');
+                return;
+            }
+
+            // Reinicializar Supabase con las credenciales cargadas
+            inicializarSupabase();
+            escucharCambiosDeSesion();
+
+            // Verificar si el usuario ya está logueado
+            const user = await obtenerUsuarioActual();
+            if (user) {
+                // Ya está logueado, redirigir según su rol
+                await redirigirSegunRol(user.id);
+            } else {
+                // No está logueado, mostrar el formulario
+                mostrarPantallaLogin();
+            }
+        }
+
+        // Redirigir al usuario según su rol
+        async function redirigirSegunRol(userId) {
+            const rol = await obtenerRolUsuario(userId);
+
+            if (!rol) {
+                // El usuario tiene cuenta de Google pero no está registrado en el sistema
+                mostrarPantallaLogin();
+                mostrarErrorLogin(
+                    'Tu cuenta de Google no tiene acceso al sistema. ' +
+                    'Pedile al administrador que te dé de alta.'
+                );
+                await db.auth.signOut();
+                return;
+            }
+
+            // Todos los roles van al dashboard principal
+            window.location.href = '/index.html';
+        }
+
+        // Mostrar la tarjeta de login y ocultar la carga
+        function mostrarPantallaLogin() {
+            document.getElementById('pantalla-carga').style.display = 'none';
+            document.getElementById('pantalla-login').style.display = 'flex';
+        }
+
+        // Mostrar error en la tarjeta de login
+        function mostrarErrorLogin(mensaje) {
+            const errorDiv = document.getElementById('login-error');
+            const errorDetalle = document.getElementById('login-error-detalle');
+            errorDetalle.textContent = mensaje;
+            errorDiv.classList.add('visible');
+        }
+
+        // Click en el botón de ingresar
+        async function clickIniciarSesion() {
+            const btn = document.getElementById('btn-ingresar');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Conectando...';
+
+            await iniciarSesion();
+
+            // Si llegamos acá es que hubo un error (sino se redirige automáticamente)
+            btn.disabled = false;
+            btn.innerHTML = `
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Ingresar con Google
+            `;
+        }
+
+        // Arrancar
+        verificarSesionExistente();
+    </script>
+
+</body>
+</html>

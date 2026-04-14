@@ -19,7 +19,7 @@ const ROLES = {
  * el usuario pone su cuenta, y vuelve ya logueado.
  */
 async function iniciarSesion() {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await db.auth.signInWithOAuth({
         provider: 'google',
         options: {
             redirectTo: window.location.origin
@@ -36,7 +36,7 @@ async function iniciarSesion() {
  * Cierra la sesión del usuario actual.
  */
 async function cerrarSesion() {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await db.auth.signOut();
     if (error) {
         console.error('Error al cerrar sesión:', error.message);
         mostrarError('No se pudo cerrar la sesión.');
@@ -50,7 +50,7 @@ async function cerrarSesion() {
  * Devuelve null si no hay nadie logueado.
  */
 async function obtenerUsuarioActual() {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await db.auth.getUser();
     if (error || !user) return null;
     return user;
 }
@@ -61,7 +61,7 @@ async function obtenerUsuarioActual() {
  */
 async function obtenerRolUsuario(userId) {
     const data = await ejecutarConsulta(
-        supabase.from('usuarios').select('rol, activo').eq('id', userId).single(),
+        db.from('usuarios').select('rol, activo').eq('id', userId).single(),
         'obtener el rol del usuario'
     );
 
@@ -111,9 +111,13 @@ async function protegerPagina(rolesPermitidos) {
     return { user, rol };
 }
 
-// Escuchar cambios en la sesión (login, logout, expiración)
-supabase.auth.onAuthStateChange((evento, sesion) => {
-    if (evento === 'SIGNED_OUT') {
-        window.location.href = '/login.html';
-    }
-});
+// El listener de cambios de sesión se activa después de inicializar Supabase
+// Se llama desde inicializarSupabase() o desde la página que lo necesite
+function escucharCambiosDeSesion() {
+    if (!db) return;
+    db.auth.onAuthStateChange((evento, sesion) => {
+        if (evento === 'SIGNED_OUT') {
+            window.location.href = '/login.html';
+        }
+    });
+}
