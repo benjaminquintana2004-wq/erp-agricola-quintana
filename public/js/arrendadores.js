@@ -20,7 +20,7 @@ async function cargarArrendadores() {
     const tbody = document.getElementById('tabla-arrendadores-body');
     tbody.innerHTML = `
         <tr>
-            <td colspan="7" style="text-align: center; padding: var(--espacio-xl);">
+            <td colspan="8" style="text-align: center; padding: var(--espacio-xl);">
                 <div class="spinner" style="margin: 0 auto;"></div>
                 <p style="color: var(--color-texto-tenue); margin-top: var(--espacio-md);">Cargando arrendadores...</p>
             </td>
@@ -29,7 +29,7 @@ async function cargarArrendadores() {
 
     const data = await ejecutarConsulta(
         db.from('arrendadores')
-            .select('*')
+            .select('*, contratos(id)')
             .eq('activo', true)
             .order('nombre'),
         'cargar arrendadores'
@@ -40,6 +40,7 @@ async function cargarArrendadores() {
     arrendadoresCargados = data;
     renderizarTablaArrendadores(data);
     actualizarContador(data.length);
+    mostrarAlertasArrendadores(data);
 }
 
 /**
@@ -54,7 +55,7 @@ function renderizarTablaArrendadores(arrendadores) {
     if (arrendadores.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="tabla-vacia">
+                <td colspan="8" class="tabla-vacia">
                     No hay arrendadores registrados
                     <p>Hacé click en "Nuevo Arrendador" para agregar el primero</p>
                 </td>
@@ -63,7 +64,9 @@ function renderizarTablaArrendadores(arrendadores) {
         return;
     }
 
-    tbody.innerHTML = arrendadores.map(a => `
+    tbody.innerHTML = arrendadores.map(a => {
+        const badges = obtenerBadgesArrendador(a);
+        return `
         <tr>
             <td>
                 <strong>${a.nombre}</strong>
@@ -74,6 +77,7 @@ function renderizarTablaArrendadores(arrendadores) {
             <td>${a.hectareas ? Number(a.hectareas).toLocaleString('es-AR') + ' ha' : '—'}</td>
             <td>${a.grano || '—'}</td>
             <td>${a.telefono || '—'}</td>
+            <td>${badges}</td>
             <td>
                 <div class="tabla-acciones">
                     ${puedeEditar ? `
@@ -89,7 +93,65 @@ function renderizarTablaArrendadores(arrendadores) {
                 </div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
+}
+
+/**
+ * Genera badges de estado para un arrendador.
+ * - Sin contrato (rojo) si no tiene ningún contrato asociado
+ * - Datos incompletos (amarillo) si le faltan campos importantes
+ */
+function obtenerBadgesArrendador(a) {
+    const badges = [];
+    const tieneContrato = a.contratos && a.contratos.length > 0;
+
+    if (!tieneContrato) {
+        badges.push('<span class="badge badge-sin-contrato">Sin contrato</span>');
+    }
+
+    // Campos importantes que deberían estar completos
+    const camposFaltantes = [];
+    if (!a.cuit) camposFaltantes.push('CUIT');
+    if (!a.telefono) camposFaltantes.push('Teléfono');
+    if (!a.campo) camposFaltantes.push('Campo');
+
+    if (camposFaltantes.length > 0) {
+        const titulo = camposFaltantes.join(', ');
+        badges.push(`<span class="badge badge-datos-incompletos" title="Falta: ${titulo}">Completar datos</span>`);
+    }
+
+    if (badges.length === 0) {
+        return '<span class="badge badge-completo">OK</span>';
+    }
+
+    return badges.join(' ');
+}
+
+/**
+ * Muestra alertas arriba de la tabla si hay arrendadores sin contrato.
+ */
+function mostrarAlertasArrendadores(arrendadores) {
+    const contenedor = document.getElementById('alertas-arrendadores');
+    if (!contenedor) return;
+
+    const sinContrato = arrendadores.filter(a => !a.contratos || a.contratos.length === 0);
+
+    if (sinContrato.length === 0) {
+        contenedor.innerHTML = '';
+        return;
+    }
+
+    const nombres = sinContrato.length <= 3
+        ? sinContrato.map(a => a.nombre).join(', ')
+        : sinContrato.slice(0, 3).map(a => a.nombre).join(', ') + ` y ${sinContrato.length - 3} más`;
+
+    contenedor.innerHTML = `
+        <div style="display:flex; align-items:center; gap:var(--espacio-sm); padding:var(--espacio-sm) var(--espacio-md); border-radius:var(--radio-md); margin-bottom:var(--espacio-md); background-color:rgba(201,76,76,0.12); border:1px solid rgba(201,76,76,0.3); color:var(--color-error); font-size:var(--texto-xs);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span><strong>${sinContrato.length} sin contrato:</strong> ${nombres}</span>
+        </div>
+    `;
 }
 
 /**

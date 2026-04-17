@@ -1,0 +1,141 @@
+/* ==============================================
+   empleados.css — Estilos de empleados y jornadas
+   ============================================== */
+
+/* Tabs empleados / jornadas */
+.empleados-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--espacio-lg);
+    border-bottom: 2px solid var(--color-borde);
+}
+
+.empleados-tab {
+    padding: var(--espacio-md) var(--espacio-xl);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    color: var(--color-texto-secundario);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+}
+
+.empleados-tab:hover {
+    color: var(--color-texto);
+}
+
+.empleados-tab.activo {
+    color: var(--color-dorado);
+    border-bottom-color: var(--color-dorado);
+}
+
+.empleados-seccion {
+    display: none;
+}
+
+.empleados-seccion.activa {
+    display: block;
+}
+
+/* Resumen cards */
+.empleados-resumen {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+}
+
+.empleado-stat {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-lg);
+    text-align: center;
+}
+
+.empleado-stat-valor {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-texto);
+    margin-bottom: 2px;
+}
+
+.empleado-stat-label {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+}
+
+/* Badge activo/inactivo */
+.badge-activo {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-inactivo {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+/* Liquidación panel */
+.liquidacion-panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-lg);
+    margin-bottom: var(--espacio-lg);
+}
+
+.liquidacion-panel h3 {
+    font-size: var(--texto-lg);
+    color: var(--color-texto);
+    margin-bottom: var(--espacio-md);
+}
+
+.liquidacion-filtros {
+    display: flex;
+    gap: var(--espacio-md);
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.liquidacion-filtros .campo-grupo {
+    min-width: 180px;
+}
+
+.liquidacion-resultado {
+    margin-top: var(--espacio-lg);
+    padding: var(--espacio-md);
+    background: var(--color-fondo);
+    border-radius: var(--radio-sm);
+    display: none;
+}
+
+.liquidacion-resultado.visible {
+    display: block;
+}
+
+.liquidacion-total {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--color-dorado);
+    margin-top: var(--espacio-sm);
+}
+
+@media (max-width: 768px) {
+    .empleados-resumen {
+        grid-template-columns: 1fr;
+    }
+
+    .empleados-tab {
+        padding: var(--espacio-sm) var(--espacio-md);
+        font-size: var(--texto-sm);
+    }
+
+    .liquidacion-filtros {
+        flex-direction: column;
+    }
+}

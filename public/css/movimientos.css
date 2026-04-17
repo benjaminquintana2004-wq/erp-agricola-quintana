@@ -1,0 +1,216 @@
+/* ==============================================
+   movimientos.css — Estilos específicos de movimientos
+   ============================================== */
+
+/* ==============================================
+   FILTROS
+   ============================================== */
+
+.movimientos-filtros {
+    margin-bottom: var(--espacio-lg);
+}
+
+.filtros-fila {
+    display: flex;
+    gap: var(--espacio-sm);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.filtro-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) var(--espacio-lg);
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-completo);
+    color: var(--color-texto-secundario);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+}
+
+.filtro-btn:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+}
+
+.filtro-btn.activo {
+    background-color: var(--color-dorado-suave);
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+    font-weight: 600;
+}
+
+.filtro-contador {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 1px 8px;
+    border-radius: var(--radio-completo);
+    font-size: var(--texto-xs);
+    font-weight: 700;
+}
+
+.filtro-btn.activo .filtro-contador {
+    background-color: var(--color-dorado);
+    color: var(--color-fondo);
+}
+
+.filtro-separador {
+    width: 1px;
+    height: 24px;
+    background-color: var(--color-borde);
+    margin: 0 var(--espacio-sm);
+}
+
+/* ==============================================
+   BADGES BLANCO/NEGRO
+   ============================================== */
+
+.badge-blanco {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--color-texto);
+    border: 1px solid var(--color-borde);
+}
+
+.badge-negro {
+    background-color: rgba(30, 30, 30, 0.8);
+    color: var(--color-texto-secundario);
+    border: 1px solid var(--color-texto-tenue);
+}
+
+/* ==============================================
+   BADGES DE FACTURA
+   ============================================== */
+
+.badge-sin-factura {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+.badge-reclamada {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.badge-factura-ok {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+/* ==============================================
+   ALERTAS DE FACTURAS PENDIENTES
+   ============================================== */
+
+.alerta-factura {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-radius: var(--radio-md);
+    margin-bottom: var(--espacio-md);
+    font-size: var(--texto-sm);
+}
+
+.alerta-factura svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.alerta-factura-rojo {
+    background-color: rgba(201, 76, 76, 0.12);
+    border: 1px solid rgba(201, 76, 76, 0.3);
+    color: var(--color-error);
+}
+
+.alerta-factura-amarillo {
+    background-color: rgba(201, 168, 76, 0.12);
+    border: 1px solid rgba(201, 168, 76, 0.3);
+    color: var(--color-alerta);
+}
+
+.alerta-factura strong {
+    font-weight: 700;
+}
+
+/* ==============================================
+   SELECTOR BLANCO/NEGRO EN FORMULARIO
+   ============================================== */
+
+.tipo-selector {
+    display: flex;
+    gap: var(--espacio-sm);
+}
+
+.tipo-opcion {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-md);
+    background-color: var(--color-fondo-secundario);
+    border: 2px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    color: var(--color-texto-secundario);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+}
+
+.tipo-opcion:hover {
+    border-color: var(--color-texto-tenue);
+}
+
+.tipo-opcion.seleccionado {
+    border-color: var(--color-dorado);
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+    font-weight: 600;
+}
+
+.tipo-opcion input[type="radio"] {
+    display: none;
+}
+
+/* ==============================================
+   PRECIO COMPARACIÓN
+   ============================================== */
+
+.precio-comparacion {
+    font-size: var(--texto-xs);
+    margin-top: 2px;
+}
+
+.precio-arriba {
+    color: var(--color-verde);
+}
+
+.precio-abajo {
+    color: var(--color-error);
+}
+
+.precio-igual {
+    color: var(--color-texto-tenue);
+}
+
+/* ==============================================
+   RESPONSIVE
+   ============================================== */
+
+@media (max-width: 768px) {
+    .filtros-fila {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: var(--espacio-sm);
+    }
+
+    .filtro-separador {
+        display: none;
+    }
+}

@@ -13,53 +13,154 @@
     <!-- Estilos -->
     <link rel="stylesheet" href="/css/variables.css">
     <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/tablas.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
 
     <!-- Pantalla de carga -->
     <div id="pantalla-carga" class="cargando-pagina">
         <div class="spinner spinner-grande"></div>
-        <p>Cargando sistema...</p>
+        <p>Cargando dashboard...</p>
     </div>
 
-    <!-- Contenido principal (oculto hasta que cargue) -->
+    <!-- Contenido principal -->
     <div id="contenido-principal" class="contenido-principal" style="display: none;">
         <div class="pagina-contenido">
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: var(--espacio-lg); text-align: center;">
-                <div style="background-color: var(--color-dorado-suave); width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-dorado)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-                    </svg>
+
+            <!-- KPIs -->
+            <div class="dashboard-kpis">
+                <div class="kpi-tarjeta">
+                    <div class="kpi-icono kpi-icono-dorado">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <div class="kpi-contenido">
+                        <div class="kpi-valor" id="kpi-arrendadores">—</div>
+                        <div class="kpi-label">Arrendadores activos</div>
+                    </div>
                 </div>
-                <h2 style="color: var(--color-texto); font-size: var(--texto-2xl);">Dashboard en construcción</h2>
-                <p style="color: var(--color-texto-secundario); max-width: 400px;">
-                    El dashboard principal con estadísticas, alertas y gráficos se construye en el PASO 7.
-                    <br><br>
-                    Mientras tanto, usá el menú de la izquierda para navegar.
-                </p>
-                <a href="/arrendadores.html" class="btn-primario" style="margin-top: var(--espacio-md);">
-                    Ir a Arrendadores
-                </a>
+
+                <div class="kpi-tarjeta">
+                    <div class="kpi-icono kpi-icono-verde">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    </div>
+                    <div class="kpi-contenido">
+                        <div class="kpi-valor" id="kpi-qq-pendientes">—</div>
+                        <div class="kpi-label">QQ pendientes totales</div>
+                    </div>
+                </div>
+
+                <div class="kpi-tarjeta">
+                    <div class="kpi-icono kpi-icono-rojo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                    </div>
+                    <div class="kpi-contenido">
+                        <div class="kpi-valor" id="kpi-sin-factura">—</div>
+                        <div class="kpi-label">Movimientos sin factura</div>
+                    </div>
+                </div>
+
+                <div class="kpi-tarjeta">
+                    <div class="kpi-icono kpi-icono-azul">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    </div>
+                    <div class="kpi-contenido">
+                        <div class="kpi-valor" id="kpi-contratos">—</div>
+                        <div class="kpi-label">Contratos vigentes</div>
+                    </div>
+                </div>
             </div>
+
+            <!-- Alertas urgentes (ancho completo) -->
+            <div id="panel-alertas" class="dashboard-panel" style="margin-bottom: var(--espacio-lg); display: none;">
+                <div class="panel-header">
+                    <span class="panel-titulo">Alertas urgentes</span>
+                    <a href="/movimientos.html" class="panel-link">Ver movimientos</a>
+                </div>
+                <div class="panel-body-sin-padding" id="alertas-body"></div>
+            </div>
+
+            <!-- Grid de dos columnas -->
+            <div class="dashboard-grid">
+
+                <!-- Top 5 arrendadores con mayor saldo -->
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <span class="panel-titulo">Mayor saldo pendiente</span>
+                        <a href="/arrendadores.html" class="panel-link">Ver todos</a>
+                    </div>
+                    <div class="panel-body-sin-padding" id="top-arrendadores-body">
+                        <div class="panel-vacio">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Últimos 10 movimientos -->
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <span class="panel-titulo">Últimos movimientos</span>
+                        <a href="/movimientos.html" class="panel-link">Ver todos</a>
+                    </div>
+                    <div class="panel-body-sin-padding" id="ultimos-movimientos-body">
+                        <div class="panel-vacio">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Gráficos -->
+            <div class="dashboard-grid">
+
+                <!-- QQ entregados por mes -->
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <span class="panel-titulo">QQ entregados por mes</span>
+                    </div>
+                    <div class="grafico-contenedor">
+                        <canvas id="grafico-qq-mes"></canvas>
+                    </div>
+                </div>
+
+                <!-- Saldo por arrendador -->
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <span class="panel-titulo">Saldo pendiente por arrendador</span>
+                    </div>
+                    <div class="grafico-contenedor">
+                        <canvas id="grafico-saldos"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
         </div>
     </div>
 
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
     <!-- Scripts -->
     <script src="/js/config.js"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
     <script src="/js/ui.js"></script>
+    <script src="/js/dashboard.js"></script>
 
     <script>
         async function iniciar() {
             const usuario = await crearLayout(
                 'Dashboard',
-                'Panel principal del sistema'
+                'Resumen general del sistema'
             );
             if (!usuario) return;
+
+            await cargarDashboard();
         }
         iniciar();
     </script>

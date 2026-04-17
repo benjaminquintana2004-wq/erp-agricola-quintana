@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movimientos — ERP Agrícola Quintana</title>
+
+    <!-- Fuente Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Estilos -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/tablas.css">
+    <link rel="stylesheet" href="/css/formularios.css">
+    <link rel="stylesheet" href="/css/movimientos.css">
+</head>
+<body>
+
+    <!-- Pantalla de carga -->
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando movimientos...</p>
+    </div>
+
+    <!-- Contenido principal -->
+    <div id="contenido-principal" class="contenido-principal" style="display: none;">
+        <div class="pagina-contenido">
+
+            <!-- Filtros -->
+            <div class="movimientos-filtros">
+                <div class="filtros-fila">
+                    <button class="filtro-btn activo" data-filtro="todos" onclick="filtrarPorTipo('todos')">
+                        Todos
+                        <span class="filtro-contador" id="cont-todos">0</span>
+                    </button>
+                    <button class="filtro-btn filtro-blanco" data-filtro="blanco" onclick="filtrarPorTipo('blanco')">
+                        Blanco
+                        <span class="filtro-contador" id="cont-blanco">0</span>
+                    </button>
+                    <button class="filtro-btn filtro-negro" data-filtro="negro" onclick="filtrarPorTipo('negro')">
+                        Negro
+                        <span class="filtro-contador" id="cont-negro">0</span>
+                    </button>
+                    <div class="filtro-separador"></div>
+                    <button class="filtro-btn" data-filtro="sin_factura" onclick="filtrarPorFactura('sin_factura')">
+                        Sin factura
+                        <span class="filtro-contador" id="cont-sin_factura">0</span>
+                    </button>
+                    <button class="filtro-btn" data-filtro="reclamada" onclick="filtrarPorFactura('reclamada')">
+                        Reclamada
+                        <span class="filtro-contador" id="cont-reclamada">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Alertas de facturas pendientes -->
+            <div id="alertas-facturas"></div>
+
+            <!-- Toolbar: búsqueda + botón nuevo -->
+            <div class="tabla-toolbar">
+                <div class="tabla-toolbar-izq">
+                    <div class="tabla-busqueda">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="input-busqueda" placeholder="Buscar por arrendador, comprobante..." oninput="buscarMovimientos(this.value)">
+                    </div>
+                    <span id="tabla-contador" class="tabla-contador">0 movimientos</span>
+                </div>
+                <div>
+                    <button class="btn-primario" onclick="abrirModalNuevoMovimiento()" id="btn-nuevo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Nuevo Movimiento
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabla de movimientos -->
+            <div class="tabla-contenedor" style="overflow-x: auto;">
+                <table class="tabla" style="min-width: 950px;">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Arrendador</th>
+                            <th>Quintales</th>
+                            <th>Precio/qq</th>
+                            <th>Total</th>
+                            <th>Tipo</th>
+                            <th>Factura</th>
+                            <th style="width: 120px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-movimientos-body">
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Scripts en orden -->
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/movimientos.js"></script>
+
+    <script>
+        async function iniciar() {
+            const usuario = await crearLayout(
+                'Movimientos',
+                'Registro de ventas de quintales — blanco y negro por separado',
+                ''
+            );
+
+            if (!usuario) return;
+
+            if (usuario.rol === 'empleado') {
+                const btnNuevo = document.getElementById('btn-nuevo');
+                if (btnNuevo) btnNuevo.style.display = 'none';
+            }
+
+            await cargarMovimientos();
+        }
+
+        iniciar();
+    </script>
+
+</body>
+</html>

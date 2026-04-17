@@ -213,6 +213,22 @@
     color: var(--color-inactivo);
 }
 
+.badge-sin-contrato {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+.badge-datos-incompletos {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+    cursor: help;
+}
+
+.badge-completo {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .tabla-toolbar {

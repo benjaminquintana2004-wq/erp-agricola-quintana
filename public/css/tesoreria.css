@@ -1,0 +1,494 @@
+/* ==============================================
+   tesoreria.css — Módulo de Tesorería
+   ============================================== */
+
+/* ── Selector de empresa ────────────────────── */
+.empresa-selector {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+    padding: var(--espacio-md) var(--espacio-lg);
+    background: var(--color-superficie, var(--color-fondo-tarjeta));
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+}
+
+.empresa-selector label {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    white-space: nowrap;
+}
+
+.empresa-selector select {
+    flex: 1;
+    max-width: 320px;
+    padding: var(--espacio-sm) var(--espacio-md);
+    background: var(--color-fondo);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-sm);
+    color: var(--color-texto);
+    font-size: var(--texto-base);
+    font-family: var(--fuente-principal);
+    cursor: pointer;
+}
+
+.empresa-selector select:focus {
+    outline: none;
+    border-color: var(--color-dorado);
+}
+
+/* ── Tabs ───────────────────────────────────── */
+.tesoreria-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--espacio-lg);
+    border-bottom: 2px solid var(--color-borde);
+    overflow-x: auto;
+}
+
+.tesoreria-tab {
+    padding: var(--espacio-md) var(--espacio-xl);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    color: var(--color-texto-secundario);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+    white-space: nowrap;
+}
+
+.tesoreria-tab:hover  { color: var(--color-texto); }
+.tesoreria-tab.activo {
+    color: var(--color-dorado);
+    border-bottom-color: var(--color-dorado);
+}
+
+.tesoreria-seccion        { display: none; }
+.tesoreria-seccion.activa { display: block; }
+
+/* ── Cards de resumen ──────────────────────── */
+.tesoreria-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-xl);
+}
+
+.tesoreria-card {
+    background: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-lg);
+}
+
+.tesoreria-card-label {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    margin-bottom: var(--espacio-xs);
+}
+
+.tesoreria-card-valor {
+    font-size: var(--texto-2xl);
+    font-weight: 700;
+    color: var(--color-texto);
+    font-feature-settings: "tnum";
+}
+
+.tesoreria-card-valor.positivo { color: var(--color-verde); }
+.tesoreria-card-valor.negativo { color: var(--color-error); }
+.tesoreria-card-valor.advertencia { color: var(--color-dorado); }
+
+.tesoreria-card-sub {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    margin-top: var(--espacio-xs);
+}
+
+/* Card del saldo real — más destacada */
+.tesoreria-card.card-saldo-real {
+    border-color: var(--color-dorado);
+    background: linear-gradient(135deg, var(--color-fondo-tarjeta) 0%, rgba(201,168,76,0.05) 100%);
+}
+
+/* ── Sección saldo bancario ─────────────────── */
+.saldo-banco-panel {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-lg);
+    padding: var(--espacio-md) var(--espacio-lg);
+    background: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    margin-bottom: var(--espacio-xl);
+    flex-wrap: wrap;
+}
+
+.saldo-banco-info {
+    flex: 1;
+}
+
+.saldo-banco-fecha {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+}
+
+.saldo-banco-monto {
+    font-size: var(--texto-xl);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+/* ── Timeline de baldes ─────────────────────── */
+.timeline-titulo {
+    font-size: var(--texto-lg);
+    font-weight: 600;
+    color: var(--color-texto);
+    margin-bottom: var(--espacio-md);
+}
+
+.timeline-baldes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-xl);
+}
+
+.balde-item {
+    display: grid;
+    grid-template-columns: 120px 1fr auto auto;
+    align-items: center;
+    gap: var(--espacio-md);
+    padding: var(--espacio-md) var(--espacio-lg);
+    background: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    transition: background var(--transicion-rapida);
+}
+
+.balde-item:hover {
+    background: var(--color-fondo-hover);
+}
+
+.balde-item.balde-hoy {
+    border-color: var(--color-dorado);
+}
+
+.balde-item.balde-faltante {
+    border-color: var(--color-error);
+    background: rgba(201, 76, 76, 0.06);
+}
+
+.balde-fecha {
+    font-size: var(--texto-base);
+    font-weight: 600;
+    color: var(--color-texto);
+}
+
+.balde-fecha-hoy-label {
+    font-size: var(--texto-xs);
+    color: var(--color-dorado);
+    display: block;
+}
+
+.balde-barra-wrap {
+    height: 8px;
+    background: var(--color-borde);
+    border-radius: var(--radio-completo);
+    overflow: hidden;
+}
+
+.balde-barra {
+    height: 100%;
+    border-radius: var(--radio-completo);
+    background: var(--color-dorado);
+    transition: width 0.4s ease;
+}
+
+.balde-item.balde-faltante .balde-barra {
+    background: var(--color-error);
+}
+
+.balde-desglose {
+    display: flex;
+    gap: var(--espacio-sm);
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    white-space: nowrap;
+}
+
+.balde-desglose span {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.balde-monto {
+    font-size: var(--texto-base);
+    font-weight: 600;
+    text-align: right;
+    white-space: nowrap;
+    min-width: 140px;
+    color: var(--color-texto);
+}
+
+.balde-item.balde-faltante .balde-monto {
+    color: var(--color-error);
+}
+
+.balde-vacio {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-sm);
+    padding: var(--espacio-md) var(--espacio-lg);
+    text-align: center;
+    background: var(--color-fondo-tarjeta);
+    border: 1px dashed var(--color-borde);
+    border-radius: var(--radio-md);
+}
+
+/* ── Movimientos agrupados por balde ─────────── */
+.grupo-balde {
+    margin-bottom: var(--espacio-xl);
+}
+
+.grupo-balde-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--espacio-sm) var(--espacio-md);
+    background: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md) var(--radio-md) 0 0;
+    margin-bottom: 0;
+}
+
+.grupo-balde-fecha {
+    font-weight: 600;
+    font-size: var(--texto-base);
+    color: var(--color-dorado);
+}
+
+.grupo-balde-total {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+}
+
+.grupo-balde-total strong {
+    color: var(--color-texto);
+}
+
+.grupo-balde .tabla-contenedor {
+    border-top: none;
+    border-radius: 0 0 var(--radio-md) var(--radio-md);
+}
+
+/* ── Badge tipo de movimiento ────────────────── */
+.badge-cheque {
+    background: rgba(74, 158, 110, 0.15);
+    color: var(--color-verde);
+}
+
+.badge-transferencia {
+    background: rgba(201, 168, 76, 0.15);
+    color: var(--color-dorado);
+}
+
+.badge-pendiente-pago {
+    background: rgba(201, 168, 76, 0.15);
+    color: var(--color-dorado);
+}
+
+.badge-cobrado {
+    background: rgba(74, 158, 110, 0.15);
+    color: var(--color-verde);
+}
+
+.badge-anulado {
+    background: rgba(107, 103, 96, 0.2);
+    color: var(--color-texto-tenue);
+    text-decoration: line-through;
+}
+
+/* ── Hint de balde en el form ────────────────── */
+.balde-hint {
+    display: none;
+    align-items: center;
+    gap: var(--espacio-xs);
+    margin-top: var(--espacio-xs);
+    font-size: var(--texto-sm);
+    color: var(--color-dorado);
+}
+
+.balde-hint.visible {
+    display: flex;
+}
+
+.balde-hint-error {
+    color: var(--color-error);
+}
+
+/* ── Filtros de movimientos ──────────────────── */
+.filtros-movimientos {
+    display: flex;
+    gap: var(--espacio-md);
+    flex-wrap: wrap;
+    align-items: end;
+    margin-bottom: var(--espacio-lg);
+    padding: var(--espacio-md) var(--espacio-lg);
+    background: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+}
+
+.filtros-movimientos .campo-grupo {
+    min-width: 140px;
+    flex: 1;
+}
+
+.filtros-movimientos label {
+    display: block;
+    font-size: var(--texto-xs);
+    color: var(--color-texto-secundario);
+    margin-bottom: var(--espacio-xs);
+}
+
+/* ── Panel préstamos ─────────────────────────── */
+.prestamo-card {
+    background: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    margin-bottom: var(--espacio-lg);
+    overflow: hidden;
+}
+
+.prestamo-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+    cursor: pointer;
+    gap: var(--espacio-md);
+}
+
+.prestamo-card-header:hover {
+    background: var(--color-fondo-hover);
+}
+
+.prestamo-info {
+    flex: 1;
+}
+
+.prestamo-acreedor {
+    font-weight: 600;
+    font-size: var(--texto-lg);
+    color: var(--color-texto);
+}
+
+.prestamo-datos {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    margin-top: 2px;
+}
+
+.prestamo-monto {
+    text-align: right;
+}
+
+.prestamo-monto-total {
+    font-size: var(--texto-xl);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+.prestamo-monto-pendiente {
+    font-size: var(--texto-sm);
+    color: var(--color-dorado);
+}
+
+.prestamo-cuotas {
+    display: none;
+    padding: var(--espacio-md);
+}
+
+.prestamo-cuotas.abierto {
+    display: block;
+}
+
+.prestamo-toggle {
+    color: var(--color-texto-tenue);
+    transition: transform var(--transicion-rapida);
+}
+
+.prestamo-card-header.abierto .prestamo-toggle {
+    transform: rotate(180deg);
+}
+
+/* ── Reporte diario ──────────────────────────── */
+.reporte-preview {
+    background: var(--color-fondo);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-xl);
+    font-family: var(--fuente-mono);
+    font-size: var(--texto-sm);
+    color: var(--color-texto);
+    white-space: pre-wrap;
+    line-height: 1.8;
+    min-height: 300px;
+    margin-bottom: var(--espacio-lg);
+}
+
+.reporte-acciones {
+    display: flex;
+    gap: var(--espacio-md);
+    flex-wrap: wrap;
+}
+
+/* ── Conciliación ────────────────────────────── */
+.conciliacion-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--espacio-lg);
+}
+
+.conciliacion-col-titulo {
+    font-size: var(--texto-base);
+    font-weight: 600;
+    color: var(--color-texto);
+    margin-bottom: var(--espacio-md);
+    padding-bottom: var(--espacio-sm);
+    border-bottom: 1px solid var(--color-borde);
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 1100px) {
+    .tesoreria-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .tesoreria-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .balde-item {
+        grid-template-columns: 100px 1fr auto;
+    }
+
+    .balde-desglose { display: none; }
+
+    .conciliacion-cols {
+        grid-template-columns: 1fr;
+    }
+
+    .tesoreria-tab {
+        padding: var(--espacio-sm) var(--espacio-md);
+        font-size: var(--texto-sm);
+    }
+}

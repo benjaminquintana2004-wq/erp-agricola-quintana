@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Despachos — ERP Agrícola Quintana</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/tablas.css">
+    <link rel="stylesheet" href="/css/formularios.css">
+    <link rel="stylesheet" href="/css/despachos.css">
+</head>
+<body>
+
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando despachos...</p>
+    </div>
+
+    <div id="contenido-principal" class="contenido-principal" style="display: none;">
+        <div class="pagina-contenido">
+
+            <div class="despachos-tabs">
+                <button class="despachos-tab activo" onclick="cambiarTabDespachos('despachos')">Despachos</button>
+                <button class="despachos-tab" onclick="cambiarTabDespachos('camiones')">Camiones</button>
+            </div>
+
+            <!-- DESPACHOS -->
+            <div class="despachos-seccion activa" id="seccion-despachos">
+                <div class="tabla-toolbar">
+                    <div class="tabla-toolbar-izq">
+                        <div class="tabla-busqueda">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="input-busqueda-despachos" placeholder="Buscar por destino, CPE o lote..." oninput="buscarDespachos(this.value)">
+                        </div>
+                        <span id="contador-despachos" class="tabla-contador">0 despachos</span>
+                    </div>
+                    <div>
+                        <button class="btn-primario" onclick="abrirModalNuevoDespacho()" id="btn-nuevo-despacho">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Nuevo Despacho
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tabla-contenedor" style="overflow-x:auto;">
+                    <table class="tabla" style="min-width:950px;">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Lote</th>
+                                <th>Cultivo</th>
+                                <th>QQ netos</th>
+                                <th>Camión</th>
+                                <th>Destino</th>
+                                <th>CPE</th>
+                                <th style="width:100px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-despachos-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- CAMIONES -->
+            <div class="despachos-seccion" id="seccion-camiones">
+                <div class="tabla-toolbar">
+                    <div class="tabla-toolbar-izq">
+                        <span id="contador-camiones" class="tabla-contador">0 camiones</span>
+                    </div>
+                    <div>
+                        <button class="btn-primario" onclick="abrirModalNuevoCamion()" id="btn-nuevo-camion">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Nuevo Camión
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tabla-contenedor" style="overflow-x:auto;">
+                    <table class="tabla" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>Empresa</th>
+                                <th>Patente</th>
+                                <th>Chofer</th>
+                                <th>Teléfono</th>
+                                <th style="width:100px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-camiones-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/despachos.js"></script>
+
+    <script>
+        async function iniciar() {
+            const usuario = await crearLayout('Despachos', 'Registro de despachos de granos y camiones');
+            if (!usuario) return;
+            if (usuario.rol === 'empleado') {
+                document.getElementById('btn-nuevo-despacho')?.style.setProperty('display', 'none');
+                document.getElementById('btn-nuevo-camion')?.style.setProperty('display', 'none');
+            }
+            await cargarDespachos();
+        }
+        iniciar();
+    </script>
+
+</body>
+</html>

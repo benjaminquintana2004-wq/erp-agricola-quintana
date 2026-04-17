@@ -1,0 +1,132 @@
+/* ==============================================
+   stock.css — Estilos de Stock de granos
+   ============================================== */
+
+/* Resumen general de stock */
+.stock-resumen {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-xl);
+}
+
+.stock-resumen-tarjeta {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    padding: var(--espacio-lg);
+    text-align: center;
+}
+
+.stock-resumen-grano {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--espacio-xs);
+}
+
+.stock-resumen-qq {
+    font-size: var(--texto-2xl);
+    font-weight: 700;
+    color: var(--color-dorado);
+}
+
+.stock-resumen-detalle {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    margin-top: var(--espacio-xs);
+}
+
+/* Tabs para silobolsas / acopios */
+.stock-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--espacio-lg);
+    border-bottom: 2px solid var(--color-borde);
+}
+
+.stock-tab {
+    padding: var(--espacio-md) var(--espacio-xl);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    color: var(--color-texto-secundario);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+}
+
+.stock-tab:hover {
+    color: var(--color-texto);
+}
+
+.stock-tab.activo {
+    color: var(--color-dorado);
+    border-bottom-color: var(--color-dorado);
+}
+
+/* Sección oculta */
+.stock-seccion {
+    display: none;
+}
+
+.stock-seccion.activa {
+    display: block;
+}
+
+/* Badges de estado silobolsa */
+.badge-silo-activa {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-silo-en-uso {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.badge-silo-vacia {
+    background-color: rgba(107, 103, 96, 0.2);
+    color: var(--color-inactivo);
+}
+
+.badge-silo-descartada {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+/* Datos de calidad */
+.calidad-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--espacio-sm);
+    margin-top: var(--espacio-sm);
+}
+
+.calidad-item {
+    text-align: center;
+    padding: var(--espacio-xs);
+    background: var(--color-fondo-secundario);
+    border-radius: var(--radio-sm);
+}
+
+.calidad-valor {
+    font-size: var(--texto-sm);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+.calidad-label {
+    font-size: 0.65rem;
+    color: var(--color-texto-tenue);
+}
+
+@media (max-width: 768px) {
+    .calidad-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

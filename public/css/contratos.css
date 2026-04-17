@@ -1,0 +1,400 @@
+/* ==============================================
+   contratos.css — Estilos específicos de contratos
+   ============================================== */
+
+/* ==============================================
+   FILTROS DE ESTADO
+   ============================================== */
+
+.contratos-filtros {
+    display: flex;
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-lg);
+    flex-wrap: wrap;
+}
+
+.filtro-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) var(--espacio-lg);
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-completo);
+    color: var(--color-texto-secundario);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+}
+
+.filtro-btn:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+}
+
+.filtro-btn.activo {
+    background-color: var(--color-dorado-suave);
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+    font-weight: 600;
+}
+
+.filtro-contador {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 1px 8px;
+    border-radius: var(--radio-completo);
+    font-size: var(--texto-xs);
+    font-weight: 700;
+}
+
+.filtro-btn.activo .filtro-contador {
+    background-color: var(--color-dorado);
+    color: var(--color-fondo);
+}
+
+/* ==============================================
+   ALERTAS DE VENCIMIENTO
+   ============================================== */
+
+.alerta-contrato {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-radius: var(--radio-md);
+    margin-bottom: var(--espacio-md);
+    font-size: var(--texto-sm);
+}
+
+.alerta-contrato svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.alerta-contrato-rojo {
+    background-color: rgba(201, 76, 76, 0.12);
+    border: 1px solid rgba(201, 76, 76, 0.3);
+    color: var(--color-error);
+}
+
+.alerta-contrato-amarillo {
+    background-color: rgba(201, 168, 76, 0.12);
+    border: 1px solid rgba(201, 168, 76, 0.3);
+    color: var(--color-alerta);
+}
+
+.alerta-contrato strong {
+    font-weight: 700;
+}
+
+/* ==============================================
+   SUBIDA DE PDF
+   ============================================== */
+
+.pdf-upload-area {
+    border: 2px dashed var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-lg);
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    position: relative;
+}
+
+.pdf-upload-area:hover {
+    border-color: var(--color-dorado);
+    background-color: var(--color-dorado-suave);
+}
+
+.pdf-upload-area.arrastrando {
+    border-color: var(--color-dorado);
+    background-color: var(--color-dorado-suave);
+}
+
+.pdf-upload-area input[type="file"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.pdf-upload-icono {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto var(--espacio-sm);
+    color: var(--color-texto-tenue);
+}
+
+.pdf-upload-texto {
+    color: var(--color-texto-secundario);
+    font-size: var(--texto-sm);
+}
+
+.pdf-upload-texto strong {
+    color: var(--color-dorado);
+}
+
+/* PDF ya subido */
+.pdf-archivo-actual {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    padding: var(--espacio-md);
+    background-color: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+}
+
+.pdf-archivo-actual svg {
+    width: 24px;
+    height: 24px;
+    color: var(--color-dorado);
+    flex-shrink: 0;
+}
+
+.pdf-archivo-info {
+    flex: 1;
+}
+
+.pdf-archivo-nombre {
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    color: var(--color-texto);
+}
+
+.pdf-archivo-acciones {
+    display: flex;
+    gap: var(--espacio-sm);
+}
+
+.pdf-archivo-acciones button {
+    background: none;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-sm);
+    color: var(--color-texto-secundario);
+    cursor: pointer;
+    padding: var(--espacio-xs) var(--espacio-sm);
+    font-size: var(--texto-xs);
+    font-family: var(--fuente-principal);
+    transition: all var(--transicion-rapida);
+}
+
+.pdf-archivo-acciones button:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+}
+
+/* ==============================================
+   EXTRACCIÓN CON GEMINI
+   ============================================== */
+
+.gemini-estado {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-md);
+    background-color: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    margin-top: var(--espacio-md);
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+}
+
+.gemini-estado .spinner {
+    width: 18px;
+    height: 18px;
+    border-width: 2px;
+}
+
+.gemini-exito {
+    border-color: var(--color-verde);
+    color: var(--color-verde);
+}
+
+.gemini-error {
+    border-color: var(--color-error);
+    color: var(--color-error);
+}
+
+/* ==============================================
+   FRACCIONES CATASTRALES
+   ============================================== */
+
+.fracciones-lista {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-sm);
+}
+
+.fraccion-item {
+    display: grid;
+    grid-template-columns: 1fr 1fr 80px 80px auto;
+    gap: var(--espacio-sm);
+    align-items: center;
+    padding: var(--espacio-sm);
+    background-color: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+}
+
+.fraccion-item input {
+    width: 100%;
+    padding: var(--espacio-xs) var(--espacio-sm);
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-sm);
+    color: var(--color-texto);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-sm);
+    outline: none;
+}
+
+.fraccion-item input:focus {
+    border-color: var(--color-dorado);
+}
+
+.fraccion-eliminar {
+    background: none;
+    border: none;
+    color: var(--color-error);
+    cursor: pointer;
+    padding: var(--espacio-xs);
+    display: flex;
+    align-items: center;
+    opacity: 0.6;
+    transition: opacity var(--transicion-rapida);
+}
+
+.fraccion-eliminar:hover {
+    opacity: 1;
+}
+
+.fraccion-eliminar svg {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-agregar-fraccion {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--espacio-xs);
+    padding: var(--espacio-xs) var(--espacio-md);
+    background: none;
+    border: 1px dashed var(--color-borde);
+    border-radius: var(--radio-md);
+    color: var(--color-texto-tenue);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-sm);
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    margin-top: var(--espacio-sm);
+}
+
+.btn-agregar-fraccion:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+}
+
+.btn-agregar-fraccion svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ==============================================
+   CLÁUSULAS
+   ============================================== */
+
+.clausulas-lista {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-sm);
+}
+
+.clausula-item {
+    display: grid;
+    grid-template-columns: 160px 1fr auto;
+    gap: var(--espacio-sm);
+    align-items: center;
+    padding: var(--espacio-sm);
+    background-color: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+}
+
+.clausula-item select,
+.clausula-item input {
+    width: 100%;
+    padding: var(--espacio-xs) var(--espacio-sm);
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-sm);
+    color: var(--color-texto);
+    font-family: var(--fuente-principal);
+    font-size: var(--texto-sm);
+    outline: none;
+}
+
+.clausula-item select:focus,
+.clausula-item input:focus {
+    border-color: var(--color-dorado);
+}
+
+/* ==============================================
+   DETALLE DE CONTRATO (modal grande)
+   ============================================== */
+
+.contrato-detalle-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--espacio-md) var(--espacio-xl);
+}
+
+.contrato-detalle-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.contrato-detalle-label {
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    color: var(--color-texto-tenue);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.contrato-detalle-valor {
+    font-size: var(--texto-base);
+    color: var(--color-texto);
+}
+
+/* ==============================================
+   RESPONSIVE
+   ============================================== */
+
+@media (max-width: 768px) {
+    .contratos-filtros {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: var(--espacio-sm);
+    }
+
+    .fraccion-item {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .clausula-item {
+        grid-template-columns: 1fr;
+    }
+
+    .contrato-detalle-grid {
+        grid-template-columns: 1fr;
+    }
+}

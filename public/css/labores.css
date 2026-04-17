@@ -1,0 +1,114 @@
+/* ==============================================
+   labores.css — Estilos de la página de labores
+   ============================================== */
+
+/* Filtros de tipo de labor */
+.labores-filtros {
+    display: flex;
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-lg);
+    flex-wrap: wrap;
+}
+
+.filtro-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--espacio-xs);
+    padding: var(--espacio-sm) var(--espacio-md);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-completo);
+    background: transparent;
+    color: var(--color-texto-secundario);
+    font-size: var(--texto-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+}
+
+.filtro-btn:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+}
+
+.filtro-btn.activo {
+    background-color: var(--color-dorado);
+    border-color: var(--color-dorado);
+    color: var(--color-fondo);
+}
+
+.filtro-cont {
+    background-color: var(--color-fondo-secundario);
+    padding: 0 6px;
+    border-radius: var(--radio-completo);
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+}
+
+.filtro-btn.activo .filtro-cont {
+    background-color: rgba(0, 0, 0, 0.2);
+    color: var(--color-fondo);
+}
+
+/* Badges de tipo de labor */
+.badge-siembra {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-fumigacion {
+    background-color: rgba(76, 140, 201, 0.15);
+    color: #4c8cc9;
+}
+
+.badge-fertilizacion {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.badge-cosecha {
+    background-color: rgba(201, 168, 76, 0.25);
+    color: #d4b85e;
+}
+
+.badge-herbicida {
+    background-color: rgba(160, 120, 80, 0.15);
+    color: #a07850;
+}
+
+.badge-otro {
+    background-color: rgba(107, 103, 96, 0.2);
+    color: var(--color-inactivo);
+}
+
+/* Resumen de costos */
+.labores-resumen {
+    display: flex;
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+    flex-wrap: wrap;
+}
+
+.resumen-tarjeta {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-md) var(--espacio-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 140px;
+}
+
+.resumen-valor {
+    font-size: var(--texto-lg);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+.resumen-label {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+}

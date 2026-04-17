@@ -1,0 +1,78 @@
+/* ==============================================
+   maquinaria.css — Estilos de la página de maquinaria
+   ============================================== */
+
+/* Alerta de service próximo */
+.alerta-service {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) var(--espacio-md);
+    border-radius: var(--radio-md);
+    margin-bottom: var(--espacio-md);
+    font-size: var(--texto-xs);
+}
+
+.alerta-service-rojo {
+    background-color: rgba(201, 76, 76, 0.12);
+    border: 1px solid rgba(201, 76, 76, 0.3);
+    color: var(--color-error);
+}
+
+.alerta-service-amarillo {
+    background-color: var(--color-dorado-suave);
+    border: 1px solid rgba(201, 168, 76, 0.3);
+    color: var(--color-dorado);
+}
+
+.alerta-service svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+/* Badge service */
+.badge-service-ok {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-service-proximo {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.badge-service-vencido {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+/* Historial de mantenimientos */
+.mantenimiento-item {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    padding: var(--espacio-sm) 0;
+    border-bottom: 1px solid var(--color-borde);
+    font-size: var(--texto-sm);
+}
+
+.mantenimiento-item:last-child {
+    border-bottom: none;
+}
+
+.mantenimiento-fecha {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+    width: 75px;
+    flex-shrink: 0;
+}
+
+.mantenimiento-info {
+    flex: 1;
+}
+
+.mantenimiento-costo {
+    font-weight: 600;
+    flex-shrink: 0;
+}

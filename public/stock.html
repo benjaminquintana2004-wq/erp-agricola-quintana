@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock de Granos — ERP Agrícola Quintana</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/tablas.css">
+    <link rel="stylesheet" href="/css/formularios.css">
+    <link rel="stylesheet" href="/css/stock.css">
+</head>
+<body>
+
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando stock...</p>
+    </div>
+
+    <div id="contenido-principal" class="contenido-principal" style="display: none;">
+        <div class="pagina-contenido">
+
+            <!-- Resumen por grano -->
+            <div class="stock-resumen" id="stock-resumen"></div>
+
+            <!-- Tabs -->
+            <div class="stock-tabs">
+                <button class="stock-tab activo" onclick="cambiarTab('silobolsas')">Silobolsas</button>
+                <button class="stock-tab" onclick="cambiarTab('acopios')">Acopios</button>
+            </div>
+
+            <!-- SILOBOLSAS -->
+            <div class="stock-seccion activa" id="seccion-silobolsas">
+                <div class="tabla-toolbar">
+                    <div class="tabla-toolbar-izq">
+                        <span id="contador-silobolsas" class="tabla-contador">0 silobolsas</span>
+                    </div>
+                    <div>
+                        <button class="btn-primario" onclick="abrirModalNuevaSilobolsa()" id="btn-nueva-silo">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Nueva Silobolsa
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tabla-contenedor" style="overflow-x:auto;">
+                    <table class="tabla" style="min-width:900px;">
+                        <thead>
+                            <tr>
+                                <th>Lote</th>
+                                <th>Grano</th>
+                                <th>QQ iniciales</th>
+                                <th>QQ actuales</th>
+                                <th>Calidad</th>
+                                <th>Fecha armado</th>
+                                <th>Estado</th>
+                                <th style="width:100px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-silobolsas-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ACOPIOS -->
+            <div class="stock-seccion" id="seccion-acopios">
+                <div class="tabla-toolbar">
+                    <div class="tabla-toolbar-izq">
+                        <span id="contador-acopios" class="tabla-contador">0 acopios</span>
+                    </div>
+                    <div>
+                        <button class="btn-primario" onclick="abrirModalNuevoAcopio()" id="btn-nuevo-acopio">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Nuevo Acopio
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tabla-contenedor" style="overflow-x:auto;">
+                    <table class="tabla" style="min-width:800px;">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Ubicación</th>
+                                <th>Contacto</th>
+                                <th>Tarifa (qq/mes)</th>
+                                <th>Stock depositado</th>
+                                <th style="width:100px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-acopios-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/stock.js"></script>
+
+    <script>
+        async function iniciar() {
+            const usuario = await crearLayout(
+                'Stock de Granos',
+                'Silobolsas en campo y acopios de terceros'
+            );
+            if (!usuario) return;
+
+            if (usuario.rol === 'empleado') {
+                document.getElementById('btn-nueva-silo')?.style.setProperty('display', 'none');
+                document.getElementById('btn-nuevo-acopio')?.style.setProperty('display', 'none');
+            }
+
+            await cargarStock();
+        }
+        iniciar();
+    </script>
+
+</body>
+</html>

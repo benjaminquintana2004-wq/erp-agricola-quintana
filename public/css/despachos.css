@@ -1,0 +1,55 @@
+/* ==============================================
+   despachos.css — Estilos de despachos y camiones
+   ============================================== */
+
+/* Tabs camiones / despachos */
+.despachos-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--espacio-lg);
+    border-bottom: 2px solid var(--color-borde);
+}
+
+.despachos-tab {
+    padding: var(--espacio-md) var(--espacio-xl);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    color: var(--color-texto-secundario);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+}
+
+.despachos-tab:hover {
+    color: var(--color-texto);
+}
+
+.despachos-tab.activo {
+    color: var(--color-dorado);
+    border-bottom-color: var(--color-dorado);
+}
+
+.despachos-seccion {
+    display: none;
+}
+
+.despachos-seccion.activa {
+    display: block;
+}
+
+/* CPE badge */
+.badge-cpe {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+    font-family: var(--fuente-mono);
+    font-size: 0.7rem;
+}
+
+.badge-sin-cpe {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}

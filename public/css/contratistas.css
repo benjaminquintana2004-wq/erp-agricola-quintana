@@ -1,0 +1,120 @@
+/* ==============================================
+   contratistas.css — Estilos de contratistas y trabajos
+   ============================================== */
+
+/* Resumen cards */
+.contratistas-resumen {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+}
+
+.contratista-stat {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-lg);
+    text-align: center;
+}
+
+.contratista-stat-valor {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-texto);
+    margin-bottom: 2px;
+}
+
+.contratista-stat-label {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+}
+
+.contratista-stat-valor.pendiente {
+    color: var(--color-dorado);
+}
+
+.contratista-stat-valor.pagado {
+    color: var(--color-verde);
+}
+
+/* Tabs contratistas / trabajos */
+.contratistas-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--espacio-lg);
+    border-bottom: 2px solid var(--color-borde);
+}
+
+.contratistas-tab {
+    padding: var(--espacio-md) var(--espacio-xl);
+    font-size: var(--texto-base);
+    font-weight: 500;
+    color: var(--color-texto-secundario);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+}
+
+.contratistas-tab:hover {
+    color: var(--color-texto);
+}
+
+.contratistas-tab.activo {
+    color: var(--color-dorado);
+    border-bottom-color: var(--color-dorado);
+}
+
+.contratistas-seccion {
+    display: none;
+}
+
+.contratistas-seccion.activa {
+    display: block;
+}
+
+/* Badge pagado/pendiente */
+.badge-pagado {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-pendiente {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+/* Alerta pagos pendientes */
+.alerta-pagos {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) var(--espacio-md);
+    background: rgba(201, 76, 76, 0.1);
+    border: 1px solid rgba(201, 76, 76, 0.3);
+    border-radius: var(--radio-md);
+    margin-bottom: var(--espacio-md);
+    font-size: var(--texto-xs);
+    color: var(--color-error);
+}
+
+.alerta-pagos svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .contratistas-resumen {
+        grid-template-columns: 1fr;
+    }
+
+    .contratistas-tab {
+        padding: var(--espacio-sm) var(--espacio-md);
+        font-size: var(--texto-sm);
+    }
+}

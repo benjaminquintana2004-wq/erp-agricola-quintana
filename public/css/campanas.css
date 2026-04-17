@@ -1,0 +1,144 @@
+/* ==============================================
+   campanas.css — Estilos de la página de campañas
+   ============================================== */
+
+/* Tarjetas de campañas */
+.campanas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--espacio-md);
+}
+
+.campana-tarjeta {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    padding: var(--espacio-lg);
+    transition: border-color var(--transicion-rapida);
+    position: relative;
+}
+
+.campana-tarjeta:hover {
+    border-color: var(--color-texto-tenue);
+}
+
+.campana-tarjeta-activa {
+    border-color: var(--color-verde);
+    background-color: rgba(74, 158, 110, 0.05);
+}
+
+.campana-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--espacio-md);
+}
+
+.campana-nombre {
+    font-size: var(--texto-xl);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+.campana-periodo {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    margin-bottom: var(--espacio-md);
+}
+
+.campana-stats {
+    display: flex;
+    gap: var(--espacio-lg);
+    margin-bottom: var(--espacio-md);
+    padding-top: var(--espacio-md);
+    border-top: 1px solid var(--color-borde);
+}
+
+.campana-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.campana-stat-valor {
+    font-size: var(--texto-lg);
+    font-weight: 700;
+    color: var(--color-texto);
+}
+
+.campana-stat-label {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+}
+
+.campana-acciones {
+    display: flex;
+    gap: var(--espacio-sm);
+    margin-top: var(--espacio-md);
+    padding-top: var(--espacio-md);
+    border-top: 1px solid var(--color-borde);
+}
+
+.campana-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) var(--espacio-md);
+    font-size: var(--texto-sm);
+    font-weight: 500;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    background: transparent;
+    color: var(--color-texto-secundario);
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+}
+
+.campana-btn:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+}
+
+.campana-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.campana-btn-activar {
+    border-color: var(--color-verde);
+    color: var(--color-verde);
+}
+
+.campana-btn-activar:hover {
+    background-color: var(--color-verde-suave);
+}
+
+.campana-btn-eliminar:hover {
+    border-color: var(--color-error);
+    color: var(--color-error);
+}
+
+/* Estado vacío */
+.campanas-vacio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--espacio-2xl);
+    color: var(--color-texto-tenue);
+    text-align: center;
+    gap: var(--espacio-md);
+}
+
+.campanas-vacio svg {
+    width: 48px;
+    height: 48px;
+    opacity: 0.3;
+}
+
+.campanas-vacio p {
+    max-width: 400px;
+    font-size: var(--texto-sm);
+}

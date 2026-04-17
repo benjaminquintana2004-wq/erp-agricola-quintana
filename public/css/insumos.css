@@ -1,0 +1,115 @@
+/* ==============================================
+   insumos.css — Estilos de la página de insumos
+   ============================================== */
+
+/* Alerta de stock bajo */
+.alerta-stock {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) var(--espacio-md);
+    border-radius: var(--radio-md);
+    margin-bottom: var(--espacio-md);
+    font-size: var(--texto-xs);
+}
+
+.alerta-stock-rojo {
+    background-color: rgba(201, 76, 76, 0.12);
+    border: 1px solid rgba(201, 76, 76, 0.3);
+    color: var(--color-error);
+}
+
+.alerta-stock svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+/* Barra de stock */
+.stock-barra-contenedor {
+    width: 100%;
+    max-width: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stock-barra {
+    width: 100%;
+    height: 6px;
+    background-color: var(--color-fondo-secundario);
+    border-radius: var(--radio-completo);
+    overflow: hidden;
+}
+
+.stock-barra-relleno {
+    height: 100%;
+    border-radius: var(--radio-completo);
+    transition: width var(--transicion-normal);
+}
+
+.stock-barra-ok {
+    background-color: var(--color-verde);
+}
+
+.stock-barra-bajo {
+    background-color: var(--color-error);
+}
+
+.stock-barra-texto {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+}
+
+/* Badge de stock */
+.badge-stock-ok {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-stock-bajo {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+.badge-stock-sin {
+    background-color: rgba(107, 103, 96, 0.2);
+    color: var(--color-inactivo);
+}
+
+/* Modal de movimiento de insumo */
+.mov-insumo-tipo {
+    display: flex;
+    gap: var(--espacio-sm);
+}
+
+.mov-insumo-btn {
+    flex: 1;
+    padding: var(--espacio-md);
+    border: 2px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    background: transparent;
+    color: var(--color-texto-secundario);
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+    text-align: center;
+}
+
+.mov-insumo-btn:hover {
+    border-color: var(--color-dorado);
+}
+
+.mov-insumo-btn.seleccionado-entrada {
+    border-color: var(--color-verde);
+    color: var(--color-verde);
+    background-color: var(--color-verde-suave);
+}
+
+.mov-insumo-btn.seleccionado-salida {
+    border-color: var(--color-error);
+    color: var(--color-error);
+    background-color: rgba(201, 76, 76, 0.1);
+}

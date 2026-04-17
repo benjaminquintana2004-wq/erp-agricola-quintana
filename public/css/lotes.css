@@ -1,0 +1,124 @@
+/* ==============================================
+   lotes.css — Estilos de la página de lotes
+   ============================================== */
+
+/* Filtros de estado */
+.lotes-filtros {
+    display: flex;
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-lg);
+    flex-wrap: wrap;
+}
+
+.filtro-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--espacio-xs);
+    padding: var(--espacio-sm) var(--espacio-md);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-completo);
+    background: transparent;
+    color: var(--color-texto-secundario);
+    font-size: var(--texto-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transicion-rapida);
+    font-family: var(--fuente-principal);
+}
+
+.filtro-btn:hover {
+    border-color: var(--color-dorado);
+    color: var(--color-dorado);
+}
+
+.filtro-btn.activo {
+    background-color: var(--color-dorado);
+    border-color: var(--color-dorado);
+    color: var(--color-fondo);
+}
+
+.filtro-cont {
+    background-color: var(--color-fondo-secundario);
+    padding: 0 6px;
+    border-radius: var(--radio-completo);
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+}
+
+.filtro-btn.activo .filtro-cont {
+    background-color: rgba(0, 0, 0, 0.2);
+    color: var(--color-fondo);
+}
+
+/* Badges de estado del lote */
+.badge-libre {
+    background-color: rgba(107, 103, 96, 0.2);
+    color: var(--color-inactivo);
+}
+
+.badge-en-preparacion {
+    background-color: rgba(76, 140, 201, 0.15);
+    color: #4c8cc9;
+}
+
+.badge-sembrado {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.badge-cosechado {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.badge-barbecho {
+    background-color: rgba(160, 120, 80, 0.15);
+    color: #a07850;
+}
+
+/* Detalle de campaña en el lote */
+.lote-campana-info {
+    display: flex;
+    gap: var(--espacio-md);
+    align-items: center;
+    padding: var(--espacio-md) var(--espacio-lg);
+    background-color: var(--color-fondo-secundario);
+    border-radius: var(--radio-md);
+    margin-top: var(--espacio-md);
+    font-size: var(--texto-sm);
+}
+
+.lote-campana-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.lote-campana-label {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+}
+
+.lote-campana-valor {
+    font-weight: 600;
+    color: var(--color-texto);
+}
+
+/* Comparativa estimado vs real */
+.comparativa {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--texto-xs);
+    font-weight: 600;
+}
+
+.comparativa-arriba {
+    color: var(--color-verde);
+}
+
+.comparativa-abajo {
+    color: var(--color-error);
+}
