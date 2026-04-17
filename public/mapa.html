@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de campos — ERP Agrícola Quintana</title>
+
+    <!-- Fuentes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS — debe cargarse ANTES que el JS de Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
+    <!-- Estilos del ERP -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/mapa.css">
+</head>
+<body>
+
+    <!-- Pantalla de carga mientras se verifica la sesión -->
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando mapa...</p>
+    </div>
+
+    <!-- Contenido principal: el sidebar se inyecta antes de este div por crearLayout -->
+    <div id="contenido-principal" class="contenido-principal" style="display: none;">
+
+        <!--
+            IMPORTANTE: El pagina-header lo inyecta crearLayout() via renderizarHeader().
+            El div de mapa va inmediatamente después, sin .pagina-contenido (que tiene padding).
+            Si wrapeáramos en .pagina-contenido el mapa quedaría con margen y no llenaría la pantalla.
+        -->
+
+        <!-- Contenedor del mapa a pantalla completa -->
+        <div class="mapa-contenedor">
+
+            <!-- El div donde Leaflet dibuja el mapa -->
+            <div id="mapa-leaflet"></div>
+
+            <!-- Overlay de carga mientras se traen datos de Supabase -->
+            <div id="mapa-cargando" style="
+                display: none;
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(15, 14, 12, 0.6);
+                z-index: 800;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                gap: 16px;
+            ">
+                <div class="spinner spinner-grande"></div>
+                <p style="color: var(--color-texto-secundario); font-size: var(--texto-base);">Cargando datos del mapa...</p>
+            </div>
+
+            <!-- Mensaje cuando no hay coordenadas cargadas -->
+            <div id="mapa-sin-datos" class="mapa-sin-datos" style="display: none;">
+                <div class="mapa-sin-datos-icono">📍</div>
+                <div class="mapa-sin-datos-titulo">Sin coordenadas GPS</div>
+                <div class="mapa-sin-datos-texto">
+                    Aún no hay coordenadas GPS cargadas. Podés agregar la ubicación GPS desde la ficha de cada lote o silobolsa.
+                </div>
+            </div>
+
+            <!-- Panel de control — top left — toggles y leyenda -->
+            <div class="mapa-panel-control">
+                <div class="mapa-panel-titulo">Capas</div>
+
+                <div class="mapa-capas-lista">
+                    <!-- Campos arrendados -->
+                    <label class="mapa-capa-toggle">
+                        <input
+                            type="checkbox"
+                            id="toggle-campos"
+                            checked
+                            onchange="toggleCapaCampos(this.checked)"
+                        >
+                        <span class="mapa-capa-toggle-dot" style="background-color: #c9a84c;"></span>
+                        Campos arrendados
+                    </label>
+
+                    <!-- Lotes -->
+                    <label class="mapa-capa-toggle">
+                        <input
+                            type="checkbox"
+                            id="toggle-lotes"
+                            checked
+                            onchange="toggleCapaLotes(this.checked)"
+                        >
+                        <span class="mapa-capa-toggle-dot" style="background-color: #4a9e6e;"></span>
+                        Lotes
+                    </label>
+
+                    <!-- Silobolsas -->
+                    <label class="mapa-capa-toggle">
+                        <input
+                            type="checkbox"
+                            id="toggle-silos"
+                            checked
+                            onchange="toggleCapaSilobolsas(this.checked)"
+                        >
+                        <span class="mapa-capa-toggle-dot" style="background-color: #4a9e6e; border: 2px solid rgba(255,255,255,0.3);"></span>
+                        Silobolsas
+                    </label>
+                </div>
+
+                <!-- Leyenda de estados de lotes -->
+                <div class="mapa-leyenda-seccion">
+                    <div class="mapa-leyenda-titulo">Estado de lotes</div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #6b6760;"></span>
+                        Libre
+                    </div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #c9a84c;"></span>
+                        En preparación
+                    </div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #4a9e6e;"></span>
+                        Sembrado
+                    </div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #8B6914;"></span>
+                        Cosechado
+                    </div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #5a5a3a;"></span>
+                        Barbecho
+                    </div>
+                </div>
+
+                <!-- Leyenda de estados de silobolsas -->
+                <div class="mapa-leyenda-seccion">
+                    <div class="mapa-leyenda-titulo">Estado de silobolsas</div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #4a9e6e;"></span>
+                        Activa
+                    </div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #c9a84c;"></span>
+                        En uso
+                    </div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #6b6760;"></span>
+                        Vacía
+                    </div>
+                    <div class="mapa-leyenda-item">
+                        <span class="mapa-leyenda-dot" style="background-color: #c94c4c;"></span>
+                        Descartada
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel de estadísticas — top right -->
+            <div class="mapa-panel-stats">
+                <div class="mapa-panel-titulo">Estadísticas</div>
+
+                <div class="mapa-stats-lista">
+                    <div class="mapa-stat">
+                        <div class="mapa-stat-valor" id="stat-fracciones">—</div>
+                        <div class="mapa-stat-label">Fracciones con GPS / total</div>
+                    </div>
+                    <div class="mapa-stat">
+                        <div class="mapa-stat-valor" id="stat-lotes">—</div>
+                        <div class="mapa-stat-label">Lotes con GPS / total</div>
+                    </div>
+                    <div class="mapa-stat">
+                        <div class="mapa-stat-valor" id="stat-silos-activas">—</div>
+                        <div class="mapa-stat-label">Silobolsas activas o en uso</div>
+                    </div>
+                    <div class="mapa-stat">
+                        <div class="mapa-stat-valor" id="stat-qq-total">—</div>
+                        <div class="mapa-stat-label">QQ almacenados en mapa</div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /mapa-contenedor -->
+    </div><!-- /contenido-principal -->
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Leaflet JS — después del DOM y del Supabase SDK -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WLs=" crossorigin=""></script>
+
+    <!-- Scripts del ERP -->
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/mapa.js"></script>
+
+    <script>
+        async function iniciar() {
+            // 1. Crear el layout (verifica sesión, inyecta sidebar y header)
+            const usuario = await crearLayout(
+                'Mapa de campos',
+                'Campos arrendados y silobolsas'
+            );
+            if (!usuario) return; // crearLayout redirige a login si no hay sesión
+
+            // 2. Iniciar el mapa DESPUÉS de que crearLayout haya insertado el DOM.
+            //    El contenedor #mapa-leaflet ya existe y tiene altura definida por CSS.
+            await iniciarMapa();
+        }
+
+        iniciar();
+    </script>
+
+</body>
+</html>

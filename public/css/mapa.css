@@ -1,0 +1,361 @@
+/* ==============================================
+   mapa.css — Estilos del módulo de mapa de campos
+   Leaflet + paneles flotantes con tema oscuro del ERP.
+   ============================================== */
+
+/* Contenedor del mapa — ocupa todo el espacio disponible
+   debajo del header (60px aprox, ajustado por medición real) */
+.mapa-contenedor {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 73px); /* 73px = altura del pagina-header */
+    flex: 1;
+    overflow: hidden;
+}
+
+/* El div del mapa de Leaflet */
+#mapa-leaflet {
+    width: 100%;
+    height: 100%;
+}
+
+/* ==============================================
+   Paneles flotantes sobre el mapa
+   ============================================== */
+
+.mapa-panel-control,
+.mapa-panel-stats {
+    position: absolute;
+    z-index: 1000;
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-md);
+    box-shadow: var(--sombra-lg);
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+}
+
+.mapa-panel-control {
+    top: 16px;
+    left: 16px;
+    min-width: 210px;
+}
+
+.mapa-panel-stats {
+    top: 16px;
+    right: 16px;
+    min-width: 210px;
+}
+
+/* Título de los paneles */
+.mapa-panel-titulo {
+    font-size: var(--texto-sm);
+    font-weight: 700;
+    color: var(--color-dorado);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--espacio-md);
+    padding-bottom: var(--espacio-sm);
+    border-bottom: 1px solid var(--color-borde);
+}
+
+/* ==============================================
+   Panel de control — Toggles de capas
+   ============================================== */
+
+.mapa-capas-lista {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-md);
+}
+
+.mapa-capa-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: var(--texto-sm);
+    color: var(--color-texto);
+    user-select: none;
+    padding: var(--espacio-xs) 0;
+    transition: color var(--transicion-rapida);
+}
+
+.mapa-capa-toggle:hover {
+    color: var(--color-dorado);
+}
+
+.mapa-capa-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-dorado);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.mapa-capa-toggle-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.2);
+}
+
+/* ==============================================
+   Leyenda de colores
+   ============================================== */
+
+.mapa-leyenda-seccion {
+    margin-bottom: var(--espacio-md);
+}
+
+.mapa-leyenda-seccion:last-child {
+    margin-bottom: 0;
+}
+
+.mapa-leyenda-titulo {
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    color: var(--color-texto-secundario);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--espacio-sm);
+}
+
+.mapa-leyenda-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--texto-xs);
+    color: var(--color-texto-secundario);
+    padding: 2px 0;
+}
+
+.mapa-leyenda-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* ==============================================
+   Panel de estadísticas
+   ============================================== */
+
+.mapa-stats-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.mapa-stat {
+    margin-bottom: var(--espacio-md);
+    padding-bottom: var(--espacio-md);
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.mapa-stat:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.mapa-stat-valor {
+    font-size: var(--texto-lg);
+    font-weight: 700;
+    color: var(--color-texto);
+    line-height: 1.2;
+}
+
+.mapa-stat-valor.sin-datos {
+    color: var(--color-texto-tenue);
+}
+
+.mapa-stat-label {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-secundario);
+    margin-top: 2px;
+}
+
+/* ==============================================
+   Mensaje vacío sobre el mapa
+   ============================================== */
+
+.mapa-sin-datos {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 900;
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    padding: var(--espacio-xl) var(--espacio-2xl);
+    text-align: center;
+    max-width: 420px;
+    box-shadow: var(--sombra-lg);
+    pointer-events: none;
+}
+
+.mapa-sin-datos-icono {
+    font-size: 2.5rem;
+    margin-bottom: var(--espacio-md);
+    opacity: 0.5;
+}
+
+.mapa-sin-datos-titulo {
+    font-size: var(--texto-lg);
+    font-weight: 600;
+    color: var(--color-texto);
+    margin-bottom: var(--espacio-sm);
+}
+
+.mapa-sin-datos-texto {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    line-height: 1.6;
+}
+
+/* ==============================================
+   Sobreescribir tema de Leaflet al estilo oscuro
+   ============================================== */
+
+/* Popups */
+.leaflet-popup-content-wrapper {
+    background-color: var(--color-fondo-tarjeta) !important;
+    border: 1px solid var(--color-borde) !important;
+    border-radius: var(--radio-md) !important;
+    box-shadow: var(--sombra-lg) !important;
+    color: var(--color-texto) !important;
+    padding: 0 !important;
+}
+
+.leaflet-popup-content {
+    margin: 0 !important;
+    padding: var(--espacio-md) !important;
+    font-family: var(--fuente-principal) !important;
+    font-size: var(--texto-sm) !important;
+    color: var(--color-texto) !important;
+    line-height: 1.5 !important;
+    width: auto !important;
+    min-width: 200px;
+}
+
+.leaflet-popup-tip {
+    background-color: var(--color-fondo-tarjeta) !important;
+    box-shadow: none !important;
+}
+
+.leaflet-popup-tip-container {
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+
+.leaflet-popup-close-button {
+    color: var(--color-texto-secundario) !important;
+    font-size: 18px !important;
+    padding: 6px 8px !important;
+    top: 4px !important;
+    right: 4px !important;
+}
+
+.leaflet-popup-close-button:hover {
+    color: var(--color-dorado) !important;
+    background: transparent !important;
+}
+
+/* Controles de zoom */
+.leaflet-control-zoom a {
+    background-color: var(--color-fondo-tarjeta) !important;
+    color: var(--color-texto) !important;
+    border-color: var(--color-borde) !important;
+}
+
+.leaflet-control-zoom a:hover {
+    background-color: var(--color-fondo-hover) !important;
+    color: var(--color-dorado) !important;
+}
+
+/* Atribución */
+.leaflet-control-attribution {
+    background-color: rgba(21, 20, 18, 0.85) !important;
+    color: var(--color-texto-tenue) !important;
+    font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+    color: var(--color-dorado) !important;
+}
+
+/* ==============================================
+   Contenido del popup
+   ============================================== */
+
+.mapa-popup-titulo {
+    font-weight: 600;
+    color: var(--color-dorado);
+    margin-bottom: 10px;
+    font-size: var(--texto-base);
+    padding-right: 16px; /* espacio para el botón cerrar */
+}
+
+.mapa-popup-fila {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--texto-sm);
+    padding: 2px 0;
+    gap: var(--espacio-md);
+}
+
+.mapa-popup-fila-label {
+    color: var(--color-texto-secundario);
+    flex-shrink: 0;
+}
+
+.mapa-popup-fila-valor {
+    color: var(--color-texto);
+    font-weight: 500;
+    text-align: right;
+}
+
+.mapa-popup-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radio-completo);
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+/* ==============================================
+   Icono SVG para silobolsas (divIcon)
+   ============================================== */
+
+.mapa-silobolsa-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ==============================================
+   Scrollbar del panel
+   ============================================== */
+
+.mapa-panel-control::-webkit-scrollbar,
+.mapa-panel-stats::-webkit-scrollbar {
+    width: 4px;
+}
+
+.mapa-panel-control::-webkit-scrollbar-track,
+.mapa-panel-stats::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.mapa-panel-control::-webkit-scrollbar-thumb,
+.mapa-panel-stats::-webkit-scrollbar-thumb {
+    background-color: var(--color-borde);
+    border-radius: 4px;
+}
