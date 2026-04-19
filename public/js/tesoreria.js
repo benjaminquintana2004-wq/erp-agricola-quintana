@@ -11,6 +11,7 @@ let categorias           = [];
 let beneficiarios        = [];
 let contratistasTesoreria = [];   // contratistas para el selector de beneficiario
 let empleadosTesoreria    = [];   // empleados para el selector de beneficiario
+let arrendadoresTesoreria = [];   // arrendadores para el selector de beneficiario
 let movimientosTesoreria  = [];
 let prestamos             = [];
 let cuotas                = [];
@@ -27,15 +28,16 @@ let prestamoEditandoId  = null;
 async function cargarTesoreria() {
     const [
         empData, cuentasData, catData, benData,
-        contratistasData, empleadosData,
+        contratistasData, empleadosData, arrendadoresData,
         movData, prestData, cuotasData, saldosData
     ] = await Promise.all([
         ejecutarConsulta(db.from('empresas').select('*').order('nombre'), 'cargar empresas'),
         ejecutarConsulta(db.from('cuentas_bancarias').select('*, empresas(nombre)').order('alias'), 'cargar cuentas'),
         ejecutarConsulta(db.from('categorias_gasto').select('*').eq('activa', true).order('nombre'), 'cargar categorías'),
-        ejecutarConsulta(db.from('beneficiarios').select('*, contratistas(nombre), empleados(nombre)').order('nombre'), 'cargar beneficiarios'),
+        ejecutarConsulta(db.from('beneficiarios').select('*, contratistas(nombre), empleados(nombre), arrendadores(nombre)').order('nombre'), 'cargar beneficiarios'),
         ejecutarConsulta(db.from('contratistas').select('id, nombre, especialidad').order('nombre'), 'cargar contratistas'),
         ejecutarConsulta(db.from('empleados').select('id, nombre, rol').eq('activo', true).order('nombre'), 'cargar empleados'),
+        ejecutarConsulta(db.from('arrendadores').select('id, nombre').order('nombre'), 'cargar arrendadores'),
         ejecutarConsulta(
             db.from('movimientos_tesoreria')
                 .select('*, empresas(nombre), cuentas_bancarias(alias, moneda), beneficiarios(nombre), categorias_gasto(nombre)')
@@ -52,8 +54,9 @@ async function cargarTesoreria() {
     cuentas               = cuentasData      || [];
     categorias            = catData          || [];
     beneficiarios         = benData          || [];
-    contratistasTesoreria = contratistasData || [];
-    empleadosTesoreria    = empleadosData    || [];
+    contratistasTesoreria = contratistasData  || [];
+    empleadosTesoreria    = empleadosData     || [];
+    arrendadoresTesoreria = arrendadoresData  || [];
     movimientosTesoreria  = movData          || [];
     prestamos             = prestData        || [];
     cuotas                = cuotasData       || [];
@@ -445,18 +448,22 @@ function abrirModalCheque(datos = {}) {
     ).join('');
 
     // Pre-cargar beneficiario si estamos editando
-    const benActual   = beneficiarios.find(b => b.id === datos.beneficiario_id);
-    const tipoPresel  = benActual?.tipo || 'contratista';
-    const contrPresel = benActual?.contratista_id || '';
-    const emplPresel  = benActual?.empleado_id    || '';
-    const otroNombre  = (tipoPresel === 'otro' ? benActual?.nombre : '') || '';
-    const otroCuit    = (tipoPresel === 'otro' ? benActual?.cuit   : '') || '';
+    const benActual      = beneficiarios.find(b => b.id === datos.beneficiario_id);
+    const tipoPresel     = benActual?.tipo || 'contratista';
+    const contrPresel    = benActual?.contratista_id  || '';
+    const emplPresel     = benActual?.empleado_id     || '';
+    const arrPresel      = benActual?.arrendador_id   || '';
+    const otroNombre     = (tipoPresel === 'otro' ? benActual?.nombre : '') || '';
+    const otroCuit       = (tipoPresel === 'otro' ? benActual?.cuit   : '') || '';
 
     const opcionesContr = contratistasTesoreria.map(c =>
         `<option value="${c.id}" ${contrPresel === c.id ? 'selected' : ''}>${c.nombre}${c.especialidad ? ' — ' + c.especialidad : ''}</option>`
     ).join('');
     const opcionesEmpl = empleadosTesoreria.map(e =>
         `<option value="${e.id}" ${emplPresel === e.id ? 'selected' : ''}>${e.nombre}</option>`
+    ).join('');
+    const opcionesArr = arrendadoresTesoreria.map(a =>
+        `<option value="${a.id}" ${arrPresel === a.id ? 'selected' : ''}>${a.nombre}</option>`
     ).join('');
 
     const hoyLocal = new Date();
@@ -507,6 +514,7 @@ function abrirModalCheque(datos = {}) {
                     <select id="ben-tipo" class="campo-select" onchange="actualizarFormBeneficiario(this.value)">
                         <option value="contratista" ${tipoPresel === 'contratista' ? 'selected' : ''}>Contratista</option>
                         <option value="empleado"    ${tipoPresel === 'empleado'    ? 'selected' : ''}>Empleado</option>
+                        <option value="arrendador"  ${tipoPresel === 'arrendador'  ? 'selected' : ''}>Arrendador</option>
                         <option value="otro"        ${tipoPresel === 'otro'        ? 'selected' : ''}>Otro</option>
                     </select>
                 </div>
@@ -524,6 +532,14 @@ function abrirModalCheque(datos = {}) {
                     <select id="ben-empleado" class="campo-select">
                         <option value="">Seleccionar...</option>
                         ${opcionesEmpl}
+                    </select>
+                </div>
+                <!-- Arrendador -->
+                <div class="campo-grupo" id="ben-grupo-arrendador" style="${tipoPresel !== 'arrendador' ? 'display:none' : ''}">
+                    <label class="campo-label">Arrendador</label>
+                    <select id="ben-arrendador" class="campo-select">
+                        <option value="">Seleccionar...</option>
+                        ${opcionesArr}
                     </select>
                 </div>
             </div>
@@ -685,6 +701,24 @@ async function guardarCheque() {
             }
             beneficiarioId = benExist?.id || null;
         }
+    } else if (benTipo === 'arrendador') {
+        const arrId = document.getElementById('ben-arrendador')?.value;
+        if (arrId) {
+            let benExist = beneficiarios.find(b => b.arrendador_id === arrId);
+            if (!benExist) {
+                const arr = arrendadoresTesoreria.find(a => a.id === arrId);
+                const nuevo = await ejecutarConsulta(
+                    db.from('beneficiarios').insert({
+                        nombre: arr?.nombre || 'Arrendador',
+                        tipo: 'arrendador',
+                        arrendador_id: arrId
+                    }).select(),
+                    'crear beneficiario arrendador'
+                );
+                if (nuevo?.[0]) { beneficiarios.push(nuevo[0]); benExist = nuevo[0]; }
+            }
+            beneficiarioId = benExist?.id || null;
+        }
     } else {
         // Otro: nombre + cuit libre
         const otroNombre = document.getElementById('ben-otro-nombre')?.value.trim();
@@ -841,6 +875,7 @@ function abrirModalNuevoBeneficiario() {
 function actualizarFormBeneficiario(tipo) {
     document.getElementById('ben-grupo-contratista').style.display = tipo === 'contratista' ? '' : 'none';
     document.getElementById('ben-grupo-empleado').style.display    = tipo === 'empleado'    ? '' : 'none';
+    document.getElementById('ben-grupo-arrendador').style.display  = tipo === 'arrendador'  ? '' : 'none';
     document.getElementById('ben-grupo-otro').style.display        = tipo === 'otro'        ? '' : 'none';
 }
 
