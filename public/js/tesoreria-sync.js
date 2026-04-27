@@ -189,7 +189,7 @@ async function exportarASheets() {
 
     try {
         // Preparar filas: solo movimientos de la empresa activa
-        const movs = movimientosTesoreria.filter(m => m.empresa_id === empresaActivaId);
+        const movs = movimientosTesoreria.filter(m => m.empresa_id === empresaActivaId && m.estado !== 'anulado');
 
         if (movs.length === 0) {
             progreso.innerHTML = alertaInfo('No hay movimientos para exportar en esta empresa.');
@@ -199,22 +199,33 @@ async function exportarASheets() {
         progreso.innerHTML = estadoCargando(`Enviando ${movs.length} movimientos a Google Sheets...`);
 
         // Mapear a formato del sheet
-        const rows = movs.map(m => ({
-            id:             m.id,
-            empresa:        m.empresas?.nombre       || empresas.find(e => e.id === m.empresa_id)?.nombre || '',
-            cuenta:         m.cuentas_bancarias?.alias || cuentas.find(c => c.id === m.cuenta_bancaria_id)?.alias || '',
-            tipo:           m.tipo,
-            numero_cheque:  m.numero_cheque || '',
-            fecha_emision:  m.fecha_emision || '',
-            fecha_cobro:    m.fecha_cobro   || '',
-            fecha_balde:    m.fecha_balde   || '',
-            beneficiario:   m.beneficiarios?.nombre  || '',
-            categoria:      m.categorias_gasto?.nombre || '',
-            monto:          m.monto,
-            estado:         m.estado,
-            notas:          m.notas || '',
-            actualizado_en: m.actualizado_en || m.cargado_en || ''
-        }));
+        // Para empleado_entrega: si la relación viene poblada usamos m.empleados.nombre,
+        // si no, buscamos en la lista cargada `empleadosTesoreria` por id. Si tampoco está,
+        // queda vacío (no se rompe la exportación).
+        const rows = movs.map(m => {
+            const nombreEmpl = m.empleados?.nombre
+                || (m.empleado_entrega_id
+                    ? empleadosTesoreria.find(e => e.id === m.empleado_entrega_id)?.nombre
+                    : '')
+                || '';
+            return {
+                id:                m.id,
+                empresa:           m.empresas?.nombre       || empresas.find(e => e.id === m.empresa_id)?.nombre || '',
+                cuenta:            m.cuentas_bancarias?.alias || cuentas.find(c => c.id === m.cuenta_bancaria_id)?.alias || '',
+                tipo:              m.tipo,
+                numero_cheque:     m.numero_cheque || '',
+                fecha_emision:     m.fecha_emision || '',
+                fecha_cobro:       m.fecha_cobro   || '',
+                fecha_balde:       m.fecha_balde   || '',
+                beneficiario:      m.beneficiarios?.nombre  || '',
+                categoria:         m.categorias_gasto?.nombre || '',
+                monto:             m.monto,
+                estado:            m.estado,
+                notas:             m.notas || '',
+                actualizado_en:    m.actualizado_en || m.cargado_en || '',
+                empleado_entrega:  nombreEmpl
+            };
+        });
 
         const res = await llamarScript(url, 'exportar', { rows });
 
@@ -249,16 +260,61 @@ async function importarDesdeSheets() {
 
         const { nuevas, modificadas } = res.data;
 
+        // Debug: mostrar qué llegó del script
+        console.log('[Sync] nuevas:', nuevas.length, '| modificadas:', modificadas.length);
+        console.log('[Sync] empresas en memoria:', empresas.map(e => e.nombre));
+        console.log('[Sync] cuentas en memoria:', cuentas.map(c => c.alias));
+        if (nuevas.length > 0) {
+            console.log('[Sync] primera fila nueva:', JSON.stringify(nuevas[0]));
+        }
+
         progreso.innerHTML = estadoCargando(`Procesando ${nuevas.length} nuevas y ${modificadas.length} existentes...`);
 
-        let creadosOk   = 0;
+        let creadosOk      = 0;
         let actualizadosOk = 0;
-        let conflictos  = 0;
-        const feedbackIds = []; // para escribir UUIDs en el sheet
+        let conflictos     = 0;
+        let saltadas       = 0;
+        const feedbackIds  = []; // para escribir UUIDs en el sheet
+        const motivosSaltadas = []; // para debug
+
+        // ── Clasificar modificadas: separar las que hay que re-crear ──
+        // (registros cuyo ID ya no existe en ERP, o existen pero están anulados)
+        const paraRecrear = modificadas.filter(f => {
+            const enERP = movimientosTesoreria.find(m => m.id === f.id);
+            return !enERP || enERP.estado === 'anulado';
+        });
+        const paraActualizar = modificadas.filter(f => {
+            const enERP = movimientosTesoreria.find(m => m.id === f.id);
+            return enERP && enERP.estado !== 'anulado';
+        });
+
+        // Tratar las paraRecrear como filas nuevas (sin ID)
+        const todasNuevas = [
+            ...nuevas,
+            ...paraRecrear.map(f => ({ ...f, id: null }))
+        ];
 
         // ── Filas nuevas (sin id en el sheet) ─────────────────
-        for (const fila of nuevas) {
-            if (!fila.tipo || !fila.monto) continue; // fila incompleta
+        for (const fila of todasNuevas) {
+            if (!fila.tipo || !fila.monto || parsearMonto(fila.monto) <= 0) {
+                saltadas++;
+                motivosSaltadas.push(`fila sin tipo/monto válido: tipo="${fila.tipo}" monto="${fila.monto}"`);
+                continue;
+            }
+
+            // Saltar si el numero_cheque ya existe en el ERP y NO está anulado
+            if (fila.numero_cheque) {
+                const yaExiste = movimientosTesoreria.find(m =>
+                    String(m.numero_cheque) === String(fila.numero_cheque) &&
+                    m.estado !== 'anulado'
+                );
+                if (yaExiste) {
+                    saltadas++;
+                    motivosSaltadas.push(`cheque ${fila.numero_cheque} ya existe en ERP (estado: ${yaExiste.estado})`);
+                    feedbackIds.push({ fila_sheet: fila._fila_sheet, id: yaExiste.id });
+                    continue;
+                }
+            }
 
             // Resolver empresa y cuenta
             const empresa = empresas.find(e =>
@@ -269,7 +325,91 @@ async function importarDesdeSheets() {
                 (!empresa || c.empresa_id === empresa.id)
             );
 
-            if (!empresa || !cuenta) continue; // no se puede mapear
+            if (!empresa || !cuenta) {
+                saltadas++;
+                motivosSaltadas.push(`no matcheó empresa="${fila.empresa}" cuenta="${fila.cuenta}"`);
+                console.warn('[Sync] fila saltada — no matcheó empresa/cuenta:', fila.empresa, '/', fila.cuenta);
+                continue;
+            }
+
+            // Resolver beneficiario por nombre (búsqueda case-insensitive)
+            const nombreBen = (fila.beneficiario || '').toLowerCase().trim();
+            let benId = null;
+            if (nombreBen) {
+                // Buscar el tipo correcto en contratistas / empleados / arrendadores
+                const contrMatch = contratistasTesoreria.find(c => c.nombre?.toLowerCase().trim() === nombreBen);
+                const emplMatch  = !contrMatch && empleadosTesoreria.find(e => e.nombre?.toLowerCase().trim() === nombreBen);
+                const arrMatch   = !contrMatch && !emplMatch && arrendadoresTesoreria.find(a => a.nombre?.toLowerCase().trim() === nombreBen);
+
+                let tipoCorrecto   = contrMatch ? 'contratista' : emplMatch ? 'empleado' : arrMatch ? 'arrendador' : 'otro';
+                let actualizacion  = contrMatch ? { tipo: 'contratista', contratista_id: contrMatch.id }
+                                   : emplMatch  ? { tipo: 'empleado',    empleado_id:    emplMatch.id  }
+                                   : arrMatch   ? { tipo: 'arrendador',  arrendador_id:  arrMatch.id   }
+                                   : null;
+
+                // Buscar si ya existe en beneficiarios
+                const benMatch = beneficiarios.find(b => b.nombre?.toLowerCase().trim() === nombreBen);
+
+                if (benMatch) {
+                    // Si existe como "otro" pero encontramos un tipo mejor → actualizarlo
+                    if (benMatch.tipo === 'otro' && actualizacion) {
+                        const upd = await ejecutarConsulta(
+                            db.from('beneficiarios').update(actualizacion).eq('id', benMatch.id).select(),
+                            'actualizar tipo beneficiario'
+                        );
+                        if (upd?.[0]) Object.assign(benMatch, upd[0]);
+                    }
+                    benId = benMatch.id;
+                } else {
+                    // No existe → crear con el tipo correcto
+                    const nuevoObj = actualizacion
+                        ? { nombre: fila.beneficiario.trim(), ...actualizacion }
+                        : { nombre: fila.beneficiario.trim(), tipo: 'otro' };
+
+                    const nuevo = await ejecutarConsulta(
+                        db.from('beneficiarios').insert(nuevoObj).select(),
+                        'crear beneficiario desde Sheets'
+                    );
+                    if (nuevo?.[0]) {
+                        beneficiarios.push(nuevo[0]);
+                        benId = nuevo[0].id;
+                    }
+                }
+            }
+
+            // Resolver empleado que entregó el cheque (case-insensitive, opcional).
+            // Si el nombre no matchea, dejamos el campo vacío y avisamos por consola
+            // — la importación sigue, no se rompe.
+            let empleadoEntregaId = null;
+            const nombreEmpl = (fila.empleado_entrega || '').toLowerCase().trim();
+            if (nombreEmpl) {
+                const emplEntrega = empleadosTesoreria.find(e =>
+                    e.nombre?.toLowerCase().trim() === nombreEmpl
+                );
+                if (emplEntrega) {
+                    empleadoEntregaId = emplEntrega.id;
+                } else {
+                    console.warn(`[Sync] empleado_entrega "${fila.empleado_entrega}" no matcheó ningún empleado activo — se importa el cheque sin entregador`);
+                }
+            }
+
+            // Resolver categoría por nombre (búsqueda case-insensitive)
+            const nombreCat = (fila.categoria || '').toLowerCase().trim();
+            let catId = null;
+            if (nombreCat) {
+                const catMatch = categorias.find(c =>
+                    c.nombre?.toLowerCase().trim() === nombreCat
+                );
+                catId = catMatch?.id || null;
+                // Si no existe la categoría, se deja vacía (no se crea automáticamente)
+            }
+
+            // Estado inicial basado en la fecha de cobro:
+            //  - Si la fecha todavía no llegó → 'futuro' (no afecta el saldo disponible)
+            //  - Si la fecha ya pasó o es hoy → 'pendiente' (espera cobrarse)
+            // Si el sheet trae un estado explícito, se respeta.
+            const hoyStr = fechaHoyStr();
+            const estadoCalculado = (fila.fecha_cobro && fila.fecha_cobro > hoyStr) ? 'futuro' : 'pendiente';
 
             const datos = {
                 empresa_id:         empresa.id,
@@ -279,28 +419,57 @@ async function importarDesdeSheets() {
                 fecha_emision:      fila.fecha_emision || null,
                 fecha_cobro:        fila.fecha_cobro   || null,
                 fecha_balde:        fila.fecha_cobro ? calcularFechaBaldeJS(fila.fecha_cobro) : null,
-                monto:              parseFloat(fila.monto) || 0,
-                estado:             fila.estado || 'pendiente',
+                beneficiario_id:    benId,
+                categoria_id:       catId,
+                empleado_entrega_id: empleadoEntregaId,
+                monto:              parsearMonto(fila.monto),
+                estado:             fila.estado || estadoCalculado,
                 notas:              fila.notas  || null,
                 origen:             'manual'
             };
 
-            const resultado = await ejecutarConsulta(
-                db.from('movimientos_tesoreria').insert(datos).select(),
-                'importar desde Sheets'
-            );
+            // Verificar si existe un registro ANULADO con el mismo numero_cheque
+            // En ese caso, reactivarlo en lugar de insertar uno nuevo (evita duplicate key)
+            const anulado = fila.numero_cheque
+                ? movimientosTesoreria.find(m =>
+                    String(m.numero_cheque) === String(fila.numero_cheque) &&
+                    m.estado === 'anulado')
+                : null;
 
-            if (resultado?.[0]) {
+            let insertado = null;
+
+            if (anulado) {
+                // Reactivar el registro anulado con los datos frescos del sheet
+                const { data: reactivado } = await db
+                    .from('movimientos_tesoreria')
+                    .update({ ...datos, estado: estadoCalculado })
+                    .eq('id', anulado.id)
+                    .select();
+                if (reactivado?.[0]) {
+                    Object.assign(anulado, reactivado[0]); // actualizar en memoria
+                    insertado = reactivado[0];
+                }
+            } else {
+                const { data: resultado, error: errInsert } = await db
+                    .from('movimientos_tesoreria').insert(datos).select();
+                if (errInsert) {
+                    console.error('[Sync] error al insertar:', errInsert.message, fila);
+                    saltadas++;
+                } else {
+                    insertado = resultado?.[0] || null;
+                }
+            }
+
+            if (insertado) {
                 creadosOk++;
-                movimientosTesoreria.push(resultado[0]);
-                feedbackIds.push({ fila_sheet: fila._fila_sheet, id: resultado[0].id });
+                if (!anulado) movimientosTesoreria.push(insertado);
+                feedbackIds.push({ fila_sheet: fila._fila_sheet, id: insertado.id });
             }
         }
 
         // ── Filas existentes: actualizar si el sheet es más nuevo ─
-        for (const fila of modificadas) {
+        for (const fila of paraActualizar) {
             const enERP = movimientosTesoreria.find(m => m.id === fila.id);
-            if (!enERP) continue;
 
             const tsSheet = fila.actualizado_en ? new Date(fila.actualizado_en).getTime() : 0;
             const tsERP   = enERP.actualizado_en ? new Date(enERP.actualizado_en).getTime() :
@@ -333,11 +502,21 @@ async function importarDesdeSheets() {
             await llamarScript(url, 'escribirIds', { updates: feedbackIds });
         }
 
-        const detalle = `${creadosOk} creados, ${actualizadosOk} actualizados, ${conflictos} con conflicto (ganó ERP)`;
+        if (motivosSaltadas.length > 0) {
+            console.warn('[Sync] filas saltadas:', motivosSaltadas);
+        }
+
+        const detalle = `${creadosOk} creados, ${actualizadosOk} actualizados, ${conflictos} con conflicto (ganó ERP)${saltadas > 0 ? `, ${saltadas} saltadas` : ''}`;
         agregarEntradaLog({ tipo: 'importar', ok: true, detalle });
 
-        progreso.innerHTML = alertaExito(`✓ Importación completada. ${detalle}${conflictos > 0 ? ' — Hacé "Exportar" para que el Sheet quede sincronizado.' : ''}`);
-        renderizarTodo(); // refrescar dashboard y movimientos
+        // Mostrar detalle de saltadas si hay
+        const msgSaltadas = saltadas > 0
+            ? `<br><span style="color:var(--color-alerta);">⚠️ ${saltadas} fila(s) no importada(s) — abrí la consola del navegador (F12) para ver el motivo.</span>`
+            : '';
+
+        progreso.innerHTML = alertaExito(`✓ Importación completada. ${detalle}${conflictos > 0 ? ' — Hacé "Exportar" para que el Sheet quede sincronizado.' : ''}`) + msgSaltadas;
+        // Recargar todo desde Supabase para que los joins (beneficiario, categoría) estén completos
+        await cargarTesoreria();
         renderizarLogSync();
 
     } catch (err) {
@@ -401,4 +580,22 @@ function formatearFechaHora(isoStr) {
 function renderizarLogSync() {
     // Refresh solo el bloque del log sin re-renderizar toda la tab
     renderizarSync();
+}
+
+/**
+ * Convierte un monto del sheet a número flotante.
+ * Maneja formatos argentinos como "$ 900.000,00", "1.500.000", "900000", etc.
+ */
+function parsearMonto(valor) {
+    if (valor === null || valor === undefined || valor === '') return 0;
+    // Si ya es número (Sheets a veces devuelve el valor crudo)
+    if (typeof valor === 'number') return valor;
+    // Limpiar: sacar $, espacios, y convertir formato argentino (. miles, , decimales)
+    let str = String(valor)
+        .replace(/\$/g, '')       // quitar signo peso
+        .replace(/\s/g, '')       // quitar espacios
+        .replace(/\./g, '')       // quitar puntos de miles
+        .replace(',', '.');       // reemplazar coma decimal por punto
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : num;
 }

@@ -51,6 +51,22 @@
                 </button>
             </div>
 
+            <!-- Filtros de empresa -->
+            <div class="contratos-filtros" style="margin-top: calc(var(--espacio-sm) * -1);">
+                <button class="filtro-btn filtro-empresa activo" data-empresa="todas" onclick="filtrarPorEmpresa('todas')">
+                    Todas las empresas
+                    <span class="filtro-contador" id="cont-emp-todas">0</span>
+                </button>
+                <button class="filtro-btn filtro-empresa" data-empresa="diego_quintana" onclick="filtrarPorEmpresa('diego_quintana')">
+                    Diego Quintana
+                    <span class="filtro-contador" id="cont-emp-dq">0</span>
+                </button>
+                <button class="filtro-btn filtro-empresa" data-empresa="el_ataco" onclick="filtrarPorEmpresa('el_ataco')">
+                    El Ataco
+                    <span class="filtro-contador" id="cont-emp-ea">0</span>
+                </button>
+            </div>
+
             <!-- Alertas de vencimiento (se llenan dinámicamente) -->
             <div id="alertas-contratos"></div>
 
@@ -73,10 +89,11 @@
 
             <!-- Tabla de contratos -->
             <div class="tabla-contenedor" style="overflow-x: auto;">
-                <table class="tabla" style="min-width: 900px;">
+                <table class="tabla" style="min-width: 1000px;">
                     <thead>
                         <tr>
-                            <th>Arrendador</th>
+                            <th>Grupo / Arrendador</th>
+                            <th>Empresa</th>
                             <th>Ubicación</th>
                             <th>Hectáreas</th>
                             <th>QQ/año</th>
@@ -124,6 +141,14 @@
 
             // Cargar los contratos
             await cargarContratos();
+
+            // Si la URL trae ?id=X, abrir directamente el detalle de ese contrato.
+            // Útil para los links desde la ficha de grupo, dashboard, campañas, etc.
+            const params = new URLSearchParams(window.location.search);
+            const idContrato = params.get('id');
+            if (idContrato && typeof verContrato === 'function') {
+                await verContrato(idContrato);
+            }
         }
 
         iniciar();

@@ -32,6 +32,7 @@
             <div class="contratistas-tabs">
                 <button class="contratistas-tab activo" onclick="cambiarTabContratistas('contratistas')">Contratistas</button>
                 <button class="contratistas-tab" onclick="cambiarTabContratistas('trabajos')">Trabajos</button>
+                <button class="contratistas-tab" onclick="cambiarTabContratistas('cheques')">Cheques</button>
             </div>
 
             <!-- CONTRATISTAS -->
@@ -107,6 +108,17 @@
                         <tbody id="tabla-trabajos-body"></tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- CHEQUES -->
+            <div class="contratistas-seccion" id="seccion-cheques">
+                <div style="max-width:400px;margin-bottom:var(--espacio-lg);">
+                    <label class="campo-label">Seleccionar contratista</label>
+                    <select id="select-contratista-cheques" class="campo-select" onchange="cargarChequesPorContratista(this.value)">
+                        <option value="">— Seleccioná un contratista —</option>
+                    </select>
+                </div>
+                <div id="cheques-contratista-resultado"></div>
             </div>
 
         </div>

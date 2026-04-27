@@ -238,7 +238,7 @@ function abrirModalMaquina(titulo, datos) {
 
         <div class="campo-grupo">
             <label class="campo-label">Próximo service</label>
-            <input type="date" id="campo-proximo-service" class="campo-input" value="${datos.proximo_service_fecha || ''}">
+            <input type="text" data-fecha id="campo-proximo-service" class="campo-input" value="${isoADDMM(datos.proximo_service_fecha)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
         </div>
     `;
 
@@ -265,7 +265,7 @@ async function guardarMaquina() {
         anio: document.getElementById('campo-anio')?.value ? parseInt(document.getElementById('campo-anio').value) : null,
         horas_totales: document.getElementById('campo-horas')?.value ? parseFloat(document.getElementById('campo-horas').value) : 0,
         costo_hora: document.getElementById('campo-costo-hora')?.value ? parseFloat(document.getElementById('campo-costo-hora').value) : 0,
-        proximo_service_fecha: document.getElementById('campo-proximo-service')?.value || null
+        proximo_service_fecha: ddmmAISO(document.getElementById('campo-proximo-service')?.value)
     };
 
     let resultado;
@@ -357,7 +357,7 @@ function verMaquina(id) {
 // ==============================================
 
 function abrirModalMantenimiento(maquinaId, nombreMaquina) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div style="margin-bottom:var(--espacio-md);padding:var(--espacio-md);background:var(--color-fondo-secundario);border-radius:var(--radio-md);">
@@ -367,7 +367,7 @@ function abrirModalMantenimiento(maquinaId, nombreMaquina) {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-mant-fecha" class="campo-input" value="${hoy}">
+                <input type="text" data-fecha id="campo-mant-fecha" class="campo-input" value="${isoADDMM(hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Tipo de mantenimiento</label>
@@ -406,7 +406,7 @@ function abrirModalMantenimiento(maquinaId, nombreMaquina) {
 }
 
 async function guardarMantenimiento(maquinaId) {
-    const fecha = document.getElementById('campo-mant-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-mant-fecha')?.value);
     if (!fecha) { mostrarError('La fecha es obligatoria.'); return; }
 
     const datos = {

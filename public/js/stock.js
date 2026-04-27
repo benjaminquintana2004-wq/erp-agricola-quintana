@@ -207,7 +207,7 @@ function abrirModalSilobolsa(titulo, datos) {
         `<option value="${l.id}" ${datos.lote_id === l.id ? 'selected' : ''}>${l.nombre}${l.campo ? ' — ' + l.campo : ''}</option>`
     ).join('');
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="form-seccion-titulo">Ubicación y grano</div>
@@ -236,7 +236,7 @@ function abrirModalSilobolsa(titulo, datos) {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha de armado <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-fecha" class="campo-input" value="${datos.fecha_armado || hoy}">
+                <input type="text" data-fecha id="campo-fecha" class="campo-input" value="${isoADDMM(datos.fecha_armado || hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Estado</label>
@@ -314,7 +314,7 @@ function abrirModalSilobolsa(titulo, datos) {
 async function guardarSilobolsa() {
     const loteId = document.getElementById('campo-lote')?.value;
     const grano = document.getElementById('campo-grano')?.value;
-    const fecha = document.getElementById('campo-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-fecha')?.value);
     const estado = document.getElementById('campo-estado')?.value;
     const qqIniciales = document.getElementById('campo-qq-iniciales')?.value;
     const qqActuales = document.getElementById('campo-qq-actuales')?.value;

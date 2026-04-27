@@ -77,7 +77,7 @@
 .tabla {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--texto-base);
+    font-size: var(--texto-sm);   /* 14px — más compacto que los 16px anteriores */
 }
 
 /* Header de la tabla */
@@ -86,13 +86,13 @@
 }
 
 .tabla th {
-    padding: var(--espacio-md) var(--espacio-lg);
+    padding: var(--espacio-sm) var(--espacio-md);   /* 8px 16px */
     text-align: left;
     font-weight: 600;
-    font-size: var(--texto-sm);
+    font-size: var(--texto-xs);   /* 12px — encabezados más chicos que el cuerpo */
     color: var(--color-texto-secundario);
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
     border-bottom: 1px solid var(--color-borde);
     white-space: nowrap;
     cursor: default;
@@ -109,10 +109,11 @@
 
 /* Filas */
 .tabla td {
-    padding: var(--espacio-md) var(--espacio-lg);
+    padding: 9px var(--espacio-md);   /* 9px 16px — filas más ajustadas */
     border-bottom: 1px solid var(--color-borde);
     color: var(--color-texto);
     vertical-align: middle;
+    line-height: 1.4;
 }
 
 /* Filas alternadas */
@@ -229,6 +230,16 @@
     color: var(--color-verde);
 }
 
+.badge-dorado {
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+}
+
+.badge-azul {
+    background-color: rgba(74, 144, 198, 0.15);
+    color: #4a90c6;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .tabla-toolbar {
@@ -246,7 +257,7 @@
 
     .tabla th,
     .tabla td {
-        padding: var(--espacio-sm) var(--espacio-md);
-        font-size: var(--texto-sm);
+        padding: var(--espacio-xs) var(--espacio-sm);
+        font-size: var(--texto-xs);
     }
 }

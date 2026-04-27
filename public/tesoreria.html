@@ -77,8 +77,9 @@
                     <div class="campo-grupo">
                         <label>Estado</label>
                         <select id="filtro-estado" class="campo-select" onchange="renderizarMovimientos()">
-                            <option value="">Todos</option>
-                            <option value="pendiente" selected>Pendiente</option>
+                            <option value="" selected>Todos</option>
+                            <option value="futuro">Futuro</option>
+                            <option value="pendiente">Pendiente</option>
                             <option value="cobrado">Cobrado</option>
                             <option value="anulado">Anulado</option>
                         </select>
@@ -93,11 +94,20 @@
                     </div>
                     <div class="campo-grupo">
                         <label>Desde</label>
-                        <input type="date" id="filtro-desde" class="campo-input" onchange="renderizarMovimientos()">
+                        <input type="text" data-fecha id="filtro-desde" class="campo-input" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10" oninput="renderizarMovimientos()">
                     </div>
                     <div class="campo-grupo">
                         <label>Hasta</label>
-                        <input type="date" id="filtro-hasta" class="campo-input" onchange="renderizarMovimientos()">
+                        <input type="text" data-fecha id="filtro-hasta" class="campo-input" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10" oninput="renderizarMovimientos()">
+                    </div>
+                    <div class="campo-grupo">
+                        <label>Factura</label>
+                        <select id="filtro-factura" class="campo-select" onchange="renderizarMovimientos()">
+                            <option value="">Todas</option>
+                            <option value="falta">Falta factura</option>
+                            <option value="ok">Con factura</option>
+                            <option value="na">No aplica</option>
+                        </select>
                     </div>
                     <div class="campo-grupo">
                         <label>Buscar</label>

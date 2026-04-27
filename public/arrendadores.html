@@ -40,9 +40,9 @@
                 <div class="tabla-toolbar-izq">
                     <div class="tabla-busqueda">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" id="input-busqueda" placeholder="Buscar por nombre, CUIT o campo..." oninput="buscarArrendadores(this.value)">
+                        <input type="text" id="input-busqueda" placeholder="Buscar por grupo, persona, CUIT, DNI, teléfono..." oninput="buscarArrendadores(this.value)">
                     </div>
-                    <span id="tabla-contador" class="tabla-contador">0 arrendadores</span>
+                    <span id="tabla-contador" class="tabla-contador">0 grupos</span>
                 </div>
                 <div>
                     <button class="btn-primario" onclick="abrirModalNuevoArrendador()" id="btn-nuevo">
@@ -54,15 +54,15 @@
 
             <!-- Tabla de arrendadores -->
             <div class="tabla-contenedor" style="overflow-x: auto;">
-                <table class="tabla" style="min-width: 950px;">
+                <table class="tabla" style="min-width: 1050px;">
                     <thead>
                         <tr>
                             <th>Nombre</th>
-                            <th>CUIT</th>
-                            <th>Campo</th>
-                            <th>Hectáreas</th>
-                            <th>Grano</th>
-                            <th>Teléfono</th>
+                            <th>Tipo</th>
+                            <th>Contacto</th>
+                            <th>Contratos</th>
+                            <th>QQ pendientes</th>
+                            <th>Última entrega</th>
                             <th>Estado</th>
                             <th style="width: 100px;">Acciones</th>
                         </tr>
@@ -91,7 +91,7 @@
         async function iniciar() {
             const usuario = await crearLayout(
                 'Arrendadores',
-                'Gestión de arrendadores y propietarios de campos',
+                'Agrupados por contratos compartidos: cada fila es un grupo (1 persona, familia o sociedad)',
                 '' // Sin botones extra en el header por ahora
             );
 

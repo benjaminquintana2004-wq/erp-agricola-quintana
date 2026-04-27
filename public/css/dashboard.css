@@ -8,7 +8,7 @@
 
 .dashboard-kpis {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: var(--espacio-md);
     margin-bottom: var(--espacio-xl);
 }
@@ -61,6 +61,11 @@
 .kpi-icono-azul {
     background-color: rgba(76, 140, 201, 0.15);
     color: #4c8cc9;
+}
+
+.kpi-icono-amarillo {
+    background-color: rgba(232, 183, 74, 0.15);
+    color: #e8b74a;
 }
 
 .kpi-contenido {
@@ -362,4 +367,179 @@
     .dashboard-kpis {
         grid-template-columns: 1fr;
     }
+}
+
+/* ==============================================
+   Subtítulo de panel (para paneles comparativos)
+   ============================================== */
+
+.panel-subtitulo {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    font-weight: 400;
+    margin-left: auto;
+}
+
+/* ==============================================
+   PANEL CUMPLIMIENTO POR ARRENDADOR (Fase 4.2)
+   ============================================== */
+
+.cumplimiento-item {
+    display: block;
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+    text-decoration: none;
+    color: inherit;
+    transition: background-color var(--transicion-rapida);
+}
+
+.cumplimiento-item:last-child {
+    border-bottom: none;
+}
+
+.cumplimiento-item:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.cumplimiento-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+}
+
+.cumplimiento-nombre {
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    color: var(--color-texto);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cumplimiento-pct {
+    font-size: var(--texto-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    margin-left: var(--espacio-md);
+}
+
+.cumplimiento-texto-alto { color: var(--color-verde); }
+.cumplimiento-texto-medio { color: #e8b74a; }
+.cumplimiento-texto-bajo { color: var(--color-error); }
+
+.cumplimiento-barra-track {
+    width: 100%;
+    height: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.cumplimiento-barra {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.cumplimiento-barra-alto {
+    background: linear-gradient(90deg, var(--color-verde) 0%, rgba(74, 158, 110, 0.7) 100%);
+}
+
+.cumplimiento-barra-medio {
+    background: linear-gradient(90deg, #e8b74a 0%, rgba(232, 183, 74, 0.7) 100%);
+}
+
+.cumplimiento-barra-bajo {
+    background: linear-gradient(90deg, var(--color-error) 0%, rgba(201, 76, 76, 0.7) 100%);
+}
+
+.cumplimiento-detalle {
+    display: flex;
+    gap: var(--espacio-xs);
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    flex-wrap: wrap;
+}
+
+/* ==============================================
+   PANEL DEMORA DE FACTURACIÓN (Fase 4.2)
+   ============================================== */
+
+.demora-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--espacio-md);
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+    text-decoration: none;
+    color: inherit;
+    transition: background-color var(--transicion-rapida);
+}
+
+.demora-item:last-child {
+    border-bottom: none;
+}
+
+.demora-item:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.demora-izq {
+    flex: 1;
+    min-width: 0;
+}
+
+.demora-nombre {
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    color: var(--color-texto);
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.demora-detalle {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.demora-der {
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.demora-dias {
+    font-size: var(--texto-xl);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.demora-verde { color: var(--color-verde); }
+.demora-amarillo { color: #e8b74a; }
+.demora-rojo { color: var(--color-error); }
+
+.demora-max {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    margin-top: 2px;
+}
+
+/* Estado vacío "todo al día" */
+.panel-vacio-ok {
+    color: var(--color-verde);
+    gap: var(--espacio-sm);
+}
+
+.panel-vacio-ok p {
+    color: var(--color-texto-secundario);
 }

@@ -74,13 +74,12 @@ function cambiarTabContratistas(tab) {
     document.querySelectorAll('.contratistas-tab').forEach(t => t.classList.remove('activo'));
     document.querySelectorAll('.contratistas-seccion').forEach(s => s.classList.remove('activa'));
 
-    if (tab === 'contratistas') {
-        document.querySelector('.contratistas-tab:nth-child(1)').classList.add('activo');
-        document.getElementById('seccion-contratistas').classList.add('activa');
-    } else {
-        document.querySelector('.contratistas-tab:nth-child(2)').classList.add('activo');
-        document.getElementById('seccion-trabajos').classList.add('activa');
-    }
+    const tabs = { contratistas: 1, trabajos: 2, cheques: 3 };
+    const idx = tabs[tab] || 1;
+    document.querySelector(`.contratistas-tab:nth-child(${idx})`).classList.add('activo');
+    document.getElementById(`seccion-${tab}`).classList.add('activa');
+
+    if (tab === 'cheques') poblarSelectChequesContratista();
 }
 
 // ==============================================
@@ -350,13 +349,13 @@ function abrirModalTrabajo(titulo, datos) {
         `<option value="${l.id}" ${datos.lote_id === l.id ? 'selected' : ''}>${l.nombre}${l.campo ? ' — ' + l.campo : ''}</option>`
     ).join('');
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-fecha" class="campo-input" value="${datos.fecha || hoy}">
+                <input type="text" data-fecha id="campo-fecha" class="campo-input" value="${isoADDMM(datos.fecha || hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Contratista <span class="campo-requerido">*</span></label>
@@ -418,7 +417,7 @@ function abrirModalTrabajo(titulo, datos) {
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Fecha de pago</label>
-                <input type="date" id="campo-fecha-pago" class="campo-input" value="${datos.fecha_pago || ''}">
+                <input type="text" data-fecha id="campo-fecha-pago" class="campo-input" value="${isoADDMM(datos.fecha_pago)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
         </div>
     `;
@@ -434,7 +433,7 @@ function abrirModalTrabajo(titulo, datos) {
 }
 
 async function guardarTrabajo() {
-    const fecha = document.getElementById('campo-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-fecha')?.value);
     const contratista_id = document.getElementById('campo-contratista')?.value;
     const tarea = document.getElementById('campo-tarea')?.value;
 
@@ -452,7 +451,7 @@ async function guardarTrabajo() {
         precio: parseFloat(document.getElementById('campo-precio')?.value) || null,
         unidad: document.getElementById('campo-unidad')?.value || null,
         pagado,
-        fecha_pago: pagado ? (document.getElementById('campo-fecha-pago')?.value || fecha) : null
+        fecha_pago: pagado ? (ddmmAISO(document.getElementById('campo-fecha-pago')?.value) || fecha) : null
     };
 
     let resultado;
@@ -470,7 +469,7 @@ async function guardarTrabajo() {
 }
 
 async function marcarComoPagado(id) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
     const resultado = await ejecutarConsulta(
         db.from('trabajos_contratistas').update({ pagado: true, fecha_pago: hoy }).eq('id', id),
         'marcar como pagado'
@@ -492,4 +491,120 @@ function confirmarEliminarTrabajo(id) {
 async function eliminarTrabajo(id) {
     const r = await ejecutarConsulta(db.from('trabajos_contratistas').delete().eq('id', id), 'eliminar trabajo');
     if (r !== undefined) { mostrarExito('Trabajo eliminado'); await cargarContratistas(); }
+}
+
+// ==============================================
+// CHEQUES POR CONTRATISTA
+// ==============================================
+
+function poblarSelectChequesContratista() {
+    const select = document.getElementById('select-contratista-cheques');
+    if (!select) return;
+    const valorActual = select.value;
+    select.innerHTML = `<option value="">— Seleccioná un contratista —</option>` +
+        contratistasCargados.map(c =>
+            `<option value="${c.id}" ${c.id === valorActual ? 'selected' : ''}>${c.nombre}</option>`
+        ).join('');
+    if (valorActual) cargarChequesPorContratista(valorActual);
+}
+
+async function cargarChequesPorContratista(contratistaId) {
+    const container = document.getElementById('cheques-contratista-resultado');
+    if (!container) return;
+    if (!contratistaId) { container.innerHTML = ''; return; }
+
+    container.innerHTML = `<div style="display:flex;align-items:center;gap:var(--espacio-md);color:var(--color-texto-secundario);padding:var(--espacio-md) 0;">
+        <div class="spinner" style="width:18px;height:18px;"></div>
+        <span style="font-size:var(--texto-sm);">Buscando cheques...</span>
+    </div>`;
+
+    // 1. Buscar el beneficiario vinculado a este contratista
+    const bens = await ejecutarConsulta(
+        db.from('beneficiarios').select('id, nombre').eq('contratista_id', contratistaId),
+        'buscar beneficiario del contratista'
+    );
+
+    if (!bens || bens.length === 0) {
+        container.innerHTML = `<p style="color:var(--color-texto-tenue);font-size:var(--texto-sm);padding:var(--espacio-md) 0;">
+            Este contratista no tiene cheques registrados en tesorería.
+        </p>`;
+        return;
+    }
+
+    const benIds = bens.map(b => b.id);
+
+    // 2. Traer todos los movimientos de tesorería para esos beneficiarios
+    const cheques = await ejecutarConsulta(
+        db.from('movimientos_tesoreria')
+            .select('*, cuentas_bancarias(alias), categorias_gasto(nombre)')
+            .in('beneficiario_id', benIds)
+            .order('fecha_cobro', { ascending: true }),
+        'cargar cheques del contratista'
+    );
+
+    if (!cheques || cheques.length === 0) {
+        container.innerHTML = `<p style="color:var(--color-texto-tenue);font-size:var(--texto-sm);padding:var(--espacio-md) 0;">
+            Este contratista no tiene cheques registrados en tesorería.
+        </p>`;
+        return;
+    }
+
+    // Totales
+    const totalPendiente = cheques.filter(c => c.estado === 'pendiente').reduce((s, c) => s + Number(c.monto), 0);
+    const totalCobrado   = cheques.filter(c => c.estado === 'cobrado').reduce((s, c) => s + Number(c.monto), 0);
+
+    const filas = cheques.map(c => {
+        const badgeEstado = c.estado === 'pendiente'
+            ? `<span class="badge badge-pendiente-pago">Pendiente</span>`
+            : c.estado === 'cobrado'
+                ? `<span class="badge badge-cobrado">Cobrado</span>`
+                : `<span class="badge badge-anulado">Anulado</span>`;
+
+        return `
+        <tr>
+            <td style="white-space:nowrap;">${formatearFecha(c.fecha_cobro)}</td>
+            <td style="font-family:var(--fuente-mono);">${c.numero_cheque || '—'}</td>
+            <td>${c.cuentas_bancarias?.alias || '—'}</td>
+            <td>${c.categorias_gasto?.nombre || '—'}</td>
+            <td style="font-weight:600;font-family:var(--fuente-mono);white-space:nowrap;">$ ${formatearNumero(c.monto)}</td>
+            <td>${badgeEstado}</td>
+            <td style="white-space:nowrap;color:var(--color-texto-tenue);font-size:var(--texto-xs);">${formatearFecha(c.fecha_emision)}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <!-- Resumen rápido -->
+        <div style="display:flex;gap:var(--espacio-lg);margin-bottom:var(--espacio-lg);flex-wrap:wrap;">
+            <div style="background:var(--color-fondo-tarjeta);border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md) var(--espacio-lg);">
+                <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Total cheques</div>
+                <div style="font-size:var(--texto-xl);font-weight:700;color:var(--color-texto);">${cheques.length}</div>
+            </div>
+            <div style="background:var(--color-fondo-tarjeta);border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md) var(--espacio-lg);">
+                <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Pendiente de cobro</div>
+                <div style="font-size:var(--texto-xl);font-weight:700;color:var(--color-alerta);">$ ${formatearNumero(totalPendiente)}</div>
+            </div>
+            <div style="background:var(--color-fondo-tarjeta);border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md) var(--espacio-lg);">
+                <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Ya cobrado</div>
+                <div style="font-size:var(--texto-xl);font-weight:700;color:var(--color-verde);">$ ${formatearNumero(totalCobrado)}</div>
+            </div>
+        </div>
+
+        <!-- Tabla de cheques -->
+        <div class="tabla-contenedor" style="overflow-x:auto;">
+            <table class="tabla" style="min-width:700px;">
+                <thead>
+                    <tr>
+                        <th>F. Cobro</th>
+                        <th>Nro. Cheque</th>
+                        <th>Cuenta</th>
+                        <th>Categoría</th>
+                        <th>Monto</th>
+                        <th>Estado</th>
+                        <th>F. Emisión</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>
+    `;
 }

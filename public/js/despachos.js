@@ -144,13 +144,13 @@ function abrirModalDespacho(titulo, datos) {
         `<option value="${c.id}" ${datos.camion_id === c.id ? 'selected' : ''}>${c.empresa || ''} — ${c.patente || ''} (${c.chofer || ''})</option>`
     ).join('');
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-fecha" class="campo-input" value="${datos.fecha || hoy}">
+                <input type="text" data-fecha id="campo-fecha" class="campo-input" value="${isoADDMM(datos.fecha || hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Lote de origen</label>
@@ -216,7 +216,7 @@ function abrirModalDespacho(titulo, datos) {
 }
 
 async function guardarDespacho() {
-    const fecha = document.getElementById('campo-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-fecha')?.value);
     const qq = document.getElementById('campo-qq')?.value;
 
     if (!fecha) { mostrarError('La fecha es obligatoria.'); return; }

@@ -2,122 +2,192 @@
    campanas.css — Estilos de la página de campañas
    ============================================== */
 
-/* Tarjetas de campañas */
+/* Grid de tarjetas */
 .campanas-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: var(--espacio-md);
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: var(--espacio-lg);
 }
 
+/* Tarjeta de campaña */
 .campana-tarjeta {
-    background-color: var(--color-fondo-tarjeta);
+    background: linear-gradient(
+        180deg,
+        var(--color-fondo-tarjeta) 0%,
+        rgba(15, 14, 12, 0.6) 100%
+    );
     border: 1px solid var(--color-borde);
     border-radius: var(--radio-lg);
     padding: var(--espacio-lg);
-    transition: border-color var(--transicion-rapida);
+    transition: all var(--transicion-rapida);
     position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 260px;
 }
 
 .campana-tarjeta:hover {
     border-color: var(--color-texto-tenue);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
 .campana-tarjeta-activa {
     border-color: var(--color-verde);
-    background-color: rgba(74, 158, 110, 0.05);
+    background: linear-gradient(
+        180deg,
+        rgba(74, 158, 110, 0.08) 0%,
+        rgba(15, 14, 12, 0.6) 100%
+    );
+    box-shadow: 0 0 0 1px rgba(74, 158, 110, 0.2);
 }
 
+.campana-tarjeta-activa::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--color-verde) 50%,
+        transparent 100%
+    );
+}
+
+.campana-tarjeta-activa:hover {
+    border-color: var(--color-verde);
+    box-shadow: 0 0 0 1px rgba(74, 158, 110, 0.3), 0 8px 20px rgba(74, 158, 110, 0.15);
+}
+
+/* Header: nombre + badge */
 .campana-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: var(--espacio-md);
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-xs);
 }
 
 .campana-nombre {
-    font-size: var(--texto-xl);
+    font-size: var(--texto-2xl);
     font-weight: 700;
     color: var(--color-texto);
+    letter-spacing: -0.02em;
 }
 
 .campana-periodo {
     font-size: var(--texto-sm);
     color: var(--color-texto-secundario);
-    margin-bottom: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
 }
 
+/* Stats */
 .campana-stats {
-    display: flex;
-    gap: var(--espacio-lg);
-    margin-bottom: var(--espacio-md);
-    padding-top: var(--espacio-md);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--espacio-md);
+    padding: var(--espacio-md) 0;
     border-top: 1px solid var(--color-borde);
+    border-bottom: 1px solid var(--color-borde);
+    margin-bottom: var(--espacio-md);
 }
 
 .campana-stat {
     display: flex;
     flex-direction: column;
+    gap: 2px;
 }
 
 .campana-stat-valor {
-    font-size: var(--texto-lg);
+    font-size: var(--texto-2xl);
     font-weight: 700;
     color: var(--color-texto);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.campana-tarjeta-activa .campana-stat:nth-child(2) .campana-stat-valor {
+    color: var(--color-dorado);
 }
 
 .campana-stat-label {
     font-size: var(--texto-xs);
     color: var(--color-texto-tenue);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
 }
 
+/* Acciones — grid 2 columnas para no apretar textos */
 .campana-acciones {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: var(--espacio-sm);
-    margin-top: var(--espacio-md);
-    padding-top: var(--espacio-md);
-    border-top: 1px solid var(--color-borde);
+    margin-top: auto;
 }
 
 .campana-btn {
-    flex: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--espacio-sm);
-    padding: var(--espacio-sm) var(--espacio-md);
+    gap: var(--espacio-xs);
+    padding: var(--espacio-sm) var(--espacio-sm);
     font-size: var(--texto-sm);
     font-weight: 500;
     border: 1px solid var(--color-borde);
     border-radius: var(--radio-md);
-    background: transparent;
+    background: rgba(255, 255, 255, 0.02);
     color: var(--color-texto-secundario);
     cursor: pointer;
     transition: all var(--transicion-rapida);
     font-family: var(--fuente-principal);
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.2;
+    min-height: 40px;
 }
 
-.campana-btn:hover {
+.campana-btn:hover:not(:disabled) {
     border-color: var(--color-dorado);
     color: var(--color-dorado);
+    background: rgba(201, 168, 76, 0.08);
+}
+
+.campana-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
 }
 
 .campana-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
 }
 
 .campana-btn-activar {
     border-color: var(--color-verde);
     color: var(--color-verde);
+    background: rgba(74, 158, 110, 0.05);
 }
 
-.campana-btn-activar:hover {
+.campana-btn-activar:hover:not(:disabled) {
     background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+    border-color: var(--color-verde);
 }
 
-.campana-btn-eliminar:hover {
+.campana-btn-eliminar {
+    max-width: 56px;
+}
+
+.campana-btn-eliminar:hover:not(:disabled) {
     border-color: var(--color-error);
     color: var(--color-error);
+    background: rgba(220, 38, 38, 0.08);
 }
 
 /* Estado vacío */
@@ -130,6 +200,7 @@
     color: var(--color-texto-tenue);
     text-align: center;
     gap: var(--espacio-md);
+    grid-column: 1 / -1;
 }
 
 .campanas-vacio svg {
@@ -141,4 +212,14 @@
 .campanas-vacio p {
     max-width: 400px;
     font-size: var(--texto-sm);
+}
+
+/* Responsive — pantallas chicas: 1 columna y botones apilados */
+@media (max-width: 520px) {
+    .campana-acciones {
+        grid-template-columns: 1fr;
+    }
+    .campana-btn-eliminar {
+        max-width: none;
+    }
 }

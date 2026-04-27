@@ -330,7 +330,7 @@ function abrirModalMovInsumo(insumoId, nombreInsumo) {
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Fecha</label>
-                <input type="date" id="campo-mov-fecha" class="campo-input" value="${new Date().toISOString().split('T')[0]}">
+                <input type="text" data-fecha id="campo-mov-fecha" class="campo-input" value="${isoADDMM(fechaHoyStr())}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
         </div>
 
@@ -363,7 +363,7 @@ async function guardarMovInsumo(insumoId) {
     }
 
     const cantidad = document.getElementById('campo-mov-cantidad')?.value;
-    const fecha = document.getElementById('campo-mov-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-mov-fecha')?.value);
     const costoUnitario = document.getElementById('campo-mov-costo')?.value;
 
     if (!cantidad || parseFloat(cantidad) <= 0) {
@@ -386,7 +386,7 @@ async function guardarMovInsumo(insumoId) {
             insumo_id: insumoId,
             tipo: movInsumoTipo,
             cantidad: cantidadNum,
-            fecha: fecha || new Date().toISOString().split('T')[0],
+            fecha: fecha || fechaHoyStr(),
             costo_unitario: costoUnitario ? parseFloat(costoUnitario) : null
         }),
         'registrar movimiento de insumo'

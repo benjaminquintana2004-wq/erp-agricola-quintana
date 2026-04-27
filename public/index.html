@@ -69,6 +69,26 @@
                         <div class="kpi-label">Contratos vigentes</div>
                     </div>
                 </div>
+
+                <div class="kpi-tarjeta">
+                    <div class="kpi-icono kpi-icono-verde" id="kpi-cumplimiento-icono">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    <div class="kpi-contenido">
+                        <div class="kpi-valor" id="kpi-cumplimiento">—</div>
+                        <div class="kpi-label">Cumplimiento campaña activa</div>
+                    </div>
+                </div>
+
+                <div class="kpi-tarjeta">
+                    <div class="kpi-icono kpi-icono-dorado" id="kpi-demora-icono">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <div class="kpi-contenido">
+                        <div class="kpi-valor" id="kpi-demora-factura">—</div>
+                        <div class="kpi-label">Demora promedio factura</div>
+                    </div>
+                </div>
             </div>
 
             <!-- Alertas urgentes (ancho completo) -->
@@ -83,13 +103,13 @@
             <!-- Grid de dos columnas -->
             <div class="dashboard-grid">
 
-                <!-- Top 5 arrendadores con mayor saldo -->
+                <!-- Contratos vigentes -->
                 <div class="dashboard-panel">
                     <div class="panel-header">
-                        <span class="panel-titulo">Mayor saldo pendiente</span>
-                        <a href="/arrendadores.html" class="panel-link">Ver todos</a>
+                        <span class="panel-titulo">Contratos vigentes</span>
+                        <a href="/contratos.html" class="panel-link">Ver todos</a>
                     </div>
-                    <div class="panel-body-sin-padding" id="top-arrendadores-body">
+                    <div class="panel-body-sin-padding" id="contratos-panel-body">
                         <div class="panel-vacio">
                             <div class="spinner"></div>
                         </div>
@@ -131,6 +151,37 @@
                     </div>
                     <div class="grafico-contenedor">
                         <canvas id="grafico-saldos"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Paneles comparativos -->
+            <div class="dashboard-grid">
+
+                <!-- Cumplimiento por arrendador -->
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <span class="panel-titulo">Cumplimiento por arrendador</span>
+                        <span class="panel-subtitulo">Campaña activa — qq entregados vs pactados</span>
+                    </div>
+                    <div class="panel-body-sin-padding" id="cumplimiento-body">
+                        <div class="panel-vacio">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Demora de facturación -->
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <span class="panel-titulo">Demora de facturación</span>
+                        <span class="panel-subtitulo">Arrendadores que más tardan en enviar factura</span>
+                    </div>
+                    <div class="panel-body-sin-padding" id="demora-body">
+                        <div class="panel-vacio">
+                            <div class="spinner"></div>
+                        </div>
                     </div>
                 </div>
 

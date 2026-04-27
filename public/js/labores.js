@@ -297,7 +297,7 @@ function abrirModalLabor(titulo, datos) {
         return `<option value="${lc.id}" ${datos.lote_campana_id === lc.id ? 'selected' : ''}>${nombre} — ${cultivo}</option>`;
     }).join('');
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="form-seccion-titulo">Datos de la labor</div>
@@ -326,7 +326,7 @@ function abrirModalLabor(titulo, datos) {
 
         <div class="campo-grupo">
             <label class="campo-label">Fecha <span class="campo-requerido">*</span></label>
-            <input type="date" id="campo-fecha" class="campo-input" value="${datos.fecha || hoy}">
+            <input type="text" data-fecha id="campo-fecha" class="campo-input" value="${isoADDMM(datos.fecha || hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
         </div>
 
         <hr class="form-separador">
@@ -386,7 +386,7 @@ function abrirModalLabor(titulo, datos) {
 async function guardarLabor() {
     const loteCampanaId = document.getElementById('campo-lote-campana')?.value;
     const tipo = document.getElementById('campo-tipo')?.value;
-    const fecha = document.getElementById('campo-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-fecha')?.value);
     const producto = document.getElementById('campo-producto')?.value.trim();
     const dosis = document.getElementById('campo-dosis')?.value.trim();
     const unidad = document.getElementById('campo-unidad')?.value;

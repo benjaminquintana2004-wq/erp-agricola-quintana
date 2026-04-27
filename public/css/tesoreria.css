@@ -74,9 +74,15 @@
 /* ── Cards de resumen ──────────────────────── */
 .tesoreria-cards {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: var(--espacio-md);
     margin-bottom: var(--espacio-xl);
+}
+
+/* Card "exigible hoy" — borde sutil de alerta */
+.tesoreria-card.card-exigible {
+    border-color: var(--color-dorado);
+    background: linear-gradient(135deg, var(--color-fondo-tarjeta) 0%, rgba(201,168,76,0.04) 100%);
 }
 
 .tesoreria-card {
@@ -159,13 +165,13 @@
 }
 
 .balde-item {
-    display: grid;
-    grid-template-columns: 120px 1fr auto auto;
-    align-items: center;
-    gap: var(--espacio-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-xs);
     padding: var(--espacio-md) var(--espacio-lg);
     background: var(--color-fondo-tarjeta);
     border: 1px solid var(--color-borde);
+    border-left: 3px solid var(--color-borde);
     border-radius: var(--radio-md);
     transition: background var(--transicion-rapida);
 }
@@ -176,69 +182,119 @@
 
 .balde-item.balde-hoy {
     border-color: var(--color-dorado);
-}
-
-.balde-item.balde-faltante {
-    border-color: var(--color-error);
-    background: rgba(201, 76, 76, 0.06);
+    border-left-color: var(--color-dorado);
 }
 
 .balde-fecha {
     font-size: var(--texto-base);
     font-weight: 600;
     color: var(--color-texto);
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-xs);
 }
 
 .balde-fecha-hoy-label {
     font-size: var(--texto-xs);
     color: var(--color-dorado);
-    display: block;
+    font-weight: 500;
 }
 
-.balde-barra-wrap {
-    height: 8px;
-    background: var(--color-borde);
-    border-radius: var(--radio-completo);
-    overflow: hidden;
-}
-
-.balde-barra {
-    height: 100%;
-    border-radius: var(--radio-completo);
-    background: var(--color-dorado);
-    transition: width 0.4s ease;
-}
-
-.balde-item.balde-faltante .balde-barra {
-    background: var(--color-error);
-}
-
-.balde-desglose {
+/* ── Desglose detallado del balde ── */
+.balde-desglose-detalle {
     display: flex;
-    gap: var(--espacio-sm);
-    font-size: var(--texto-xs);
-    color: var(--color-texto-tenue);
-    white-space: nowrap;
+    flex-direction: column;
+    gap: 4px;
 }
 
-.balde-desglose span {
-    display: flex;
+.balde-linea {
+    display: grid;
+    grid-template-columns: 1fr 40px 160px;
     align-items: center;
-    gap: 3px;
+    font-size: var(--texto-sm);
 }
 
-.balde-monto {
-    font-size: var(--texto-base);
-    font-weight: 600;
+.balde-linea-tipo  { color: var(--color-texto-secundario); }
+.balde-linea-cant  { color: var(--color-texto-tenue); text-align: center; font-variant-numeric: tabular-nums; }
+.balde-linea-monto {
+    font-family: var(--fuente-mono);
+    font-weight: 500;
     text-align: right;
-    white-space: nowrap;
-    min-width: 140px;
     color: var(--color-texto);
 }
+.balde-linea-monto.tenue { color: var(--color-texto-tenue); font-weight: 400; }
 
-.balde-item.balde-faltante .balde-monto {
-    color: var(--color-error);
+.balde-separador {
+    border-top: 1px solid var(--color-borde);
+    margin: var(--espacio-sm) 0 var(--espacio-xs);
 }
+
+/* ── Proyección de saldo ── */
+.balde-proyeccion {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--texto-sm);
+}
+
+.balde-total-balde {
+    display: grid;
+    grid-template-columns: 1fr 160px;
+    font-size: var(--texto-base);
+    color: var(--color-texto);
+    margin-bottom: 4px;
+}
+.balde-total-balde strong {
+    font-family: var(--fuente-mono);
+    text-align: right;
+}
+
+.balde-saldo-linea {
+    display: grid;
+    grid-template-columns: 1fr 160px;
+    color: var(--color-texto-secundario);
+}
+.balde-saldo-linea span:last-child,
+.balde-saldo-linea strong {
+    font-family: var(--fuente-mono);
+    text-align: right;
+}
+.balde-saldo-despues strong { font-weight: 600; }
+
+/* ── Semáforo ── */
+.balde-item.balde-verde    { border-left-color: var(--color-verde); }
+.balde-item.balde-amarillo { border-left-color: var(--color-dorado); }
+.balde-item.balde-rojo     { border-left-color: var(--color-error); background: rgba(201,76,76,0.04); }
+
+/* Balde de hoy vacío de futuros pero con exigible vencido pendiente */
+.balde-item.balde-alerta-vencido {
+    border-color: var(--color-error);
+    border-left-color: var(--color-error);
+    background: rgba(201,76,76,0.03);
+}
+
+.balde-aviso-exigible {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-xs);
+    margin-top: var(--espacio-sm);
+    padding: var(--espacio-xs) var(--espacio-sm);
+    background: rgba(201,76,76,0.08);
+    border: 1px solid var(--color-error);
+    border-radius: var(--radio-sm, 4px);
+    font-size: var(--texto-xs);
+    color: var(--color-error);
+    line-height: 1.4;
+}
+
+.balde-aviso-exigible strong {
+    font-variant-numeric: tabular-nums;
+}
+
+.balde-saldo-despues.balde-verde strong    { color: var(--color-verde); }
+.balde-saldo-despues.balde-amarillo strong { color: var(--color-dorado); }
+.balde-saldo-despues.balde-rojo strong     { color: var(--color-error); }
 
 .balde-vacio {
     color: var(--color-texto-tenue);
@@ -295,6 +351,11 @@
 .badge-transferencia {
     background: rgba(201, 168, 76, 0.15);
     color: var(--color-dorado);
+}
+
+.badge-futuro {
+    background: rgba(90, 143, 194, 0.15);
+    color: #5a8fc2;
 }
 
 .badge-pendiente-pago {
@@ -466,26 +527,23 @@
 }
 
 /* ── Responsive ──────────────────────────────── */
-@media (max-width: 1100px) {
-    .tesoreria-cards {
-        grid-template-columns: repeat(2, 1fr);
-    }
+@media (max-width: 1400px) {
+    .tesoreria-cards { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 900px) {
+    .tesoreria-cards { grid-template-columns: repeat(2, 1fr); }
+
+    .balde-linea,
+    .balde-total-balde,
+    .balde-saldo-linea { grid-template-columns: 1fr auto; }
+    .balde-linea-cant  { display: none; }
 }
 
 @media (max-width: 768px) {
-    .tesoreria-cards {
-        grid-template-columns: 1fr;
-    }
+    .tesoreria-cards { grid-template-columns: 1fr; }
 
-    .balde-item {
-        grid-template-columns: 100px 1fr auto;
-    }
-
-    .balde-desglose { display: none; }
-
-    .conciliacion-cols {
-        grid-template-columns: 1fr;
-    }
+    .conciliacion-cols { grid-template-columns: 1fr; }
 
     .tesoreria-tab {
         padding: var(--espacio-sm) var(--espacio-md);

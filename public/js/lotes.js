@@ -304,7 +304,7 @@ function abrirModalLote(titulo, datos) {
             <div class="campos-fila">
                 <div class="campo-grupo">
                     <label class="campo-label">Fecha de siembra</label>
-                    <input type="date" id="campo-fecha-siembra" class="campo-input" value="${campanaActual?.fecha_siembra || ''}">
+                    <input type="text" data-fecha id="campo-fecha-siembra" class="campo-input" value="${isoADDMM(campanaActual?.fecha_siembra)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
                 </div>
                 <div class="campo-grupo">
                     <label class="campo-label">QQ/ha estimados</label>
@@ -401,7 +401,7 @@ async function guardarLote() {
 async function guardarLoteCampana(loteId) {
     const cultivo = document.getElementById('campo-cultivo')?.value;
     const variedad = document.getElementById('campo-variedad')?.value.trim();
-    const fechaSiembra = document.getElementById('campo-fecha-siembra')?.value;
+    const fechaSiembra = ddmmAISO(document.getElementById('campo-fecha-siembra')?.value);
     const qqEstimados = document.getElementById('campo-qq-estimados')?.value;
     const qqReales = document.getElementById('campo-qq-reales')?.value;
 

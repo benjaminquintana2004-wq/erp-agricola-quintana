@@ -254,6 +254,120 @@ function abrirModal(titulo, contenidoHTML, footerHTML = '') {
 
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     document.body.style.overflow = 'hidden';
+
+    // Activar máscara dd/mm/aaaa en cualquier input de fecha del modal
+    activarFechasDDMM(document.querySelector('.modal'));
+}
+
+// ==============================================
+// FECHAS dd/mm/aaaa — máscara y conversión ISO ↔ dd/mm/aaaa
+// ==============================================
+// Browser nativo de <input type="date"> muestra el formato según locale del SO,
+// y muchas veces termina en mm/dd/yyyy. Para forzar dd/mm/aaaa usamos un
+// <input type="text"> con máscara y convertimos a ISO al guardar.
+//
+// Uso en HTML:
+//   <input type="text" data-fecha placeholder="dd/mm/aaaa" maxlength="10"
+//          inputmode="numeric" value="${isoADDMM(datos.fecha)}">
+// Uso al leer:
+//   const fechaISO = ddmmAISO(document.getElementById('campo-fecha').value);
+
+/**
+ * Convierte YYYY-MM-DD → dd/mm/yyyy. Devuelve '' si vacío o inválido.
+ */
+function isoADDMM(iso) {
+    if (!iso) return '';
+    const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/**
+ * Convierte dd/mm/yyyy → YYYY-MM-DD. Devuelve null si vacío o inválido.
+ * Acepta dd/mm/yyyy, d/m/yyyy y dd-mm-yyyy.
+ */
+function ddmmAISO(valor) {
+    if (!valor) return null;
+    const limpio = String(valor).trim();
+    if (!limpio) return null;
+    const m = limpio.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (!m) return null;
+    const dia = parseInt(m[1], 10);
+    const mes = parseInt(m[2], 10);
+    const anio = parseInt(m[3], 10);
+    if (mes < 1 || mes > 12) return null;
+    if (dia < 1 || dia > 31) return null;
+    return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+/**
+ * Aplica máscara dd/mm/aaaa en vivo a un input de texto.
+ * Inserta las barras automáticamente y limita a 10 caracteres.
+ */
+function aplicarMascaraFecha(input) {
+    if (!input || input.dataset.fechaActivo === '1') return;
+    input.dataset.fechaActivo = '1';
+    if (!input.getAttribute('maxlength')) input.setAttribute('maxlength', '10');
+    if (!input.getAttribute('placeholder')) input.setAttribute('placeholder', 'dd/mm/aaaa');
+    if (!input.getAttribute('inputmode')) input.setAttribute('inputmode', 'numeric');
+
+    input.addEventListener('input', (e) => {
+        const v = e.target.value.replace(/\D/g, '').slice(0, 8);
+        let out = '';
+        if (v.length > 0) out = v.slice(0, 2);
+        if (v.length >= 3) out += '/' + v.slice(2, 4);
+        if (v.length >= 5) out += '/' + v.slice(4, 8);
+        e.target.value = out;
+    });
+}
+
+/**
+ * Activa la máscara en todos los inputs con data-fecha dentro de un scope.
+ * Se llama automáticamente al abrir un modal.
+ */
+function activarFechasDDMM(scope) {
+    const root = scope || document;
+    root.querySelectorAll('input[data-fecha]').forEach(aplicarMascaraFecha);
+}
+
+// Auto-activar fechas que ya estén en el DOM al cargar la página
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => activarFechasDDMM(document));
+    } else {
+        activarFechasDDMM(document);
+    }
+}
+
+// ==============================================
+// BADGE "ADELANTO" — indicador visual de pago adelantado
+// ==============================================
+// Un contrato tiene "adelanto" si tiene `adelanto_qq` o un día/mes pactado.
+// El badge cambia de color según proximidad a la fecha de vencimiento del
+// adelanto (que se repite todas las campañas en el mismo día/mes).
+
+/**
+ * Devuelve true si el contrato tiene algún tipo de pago adelantado pactado.
+ */
+function contratoTieneAdelanto(c) {
+    if (!c) return false;
+    return !!(c.adelanto_qq || c.adelanto_dia || c.adelanto_mes || c.adelanto_observaciones);
+}
+
+/**
+ * Renderiza un badge "Adelanto" para un contrato. Devuelve '' si el
+ * contrato no tiene adelanto pactado. Mismo color para todos
+ * (no varía con la proximidad a la fecha).
+ */
+function renderBadgeAdelanto(c) {
+    if (!contratoTieneAdelanto(c)) return '';
+
+    const qq = c.adelanto_qq ? `${Number(c.adelanto_qq).toLocaleString('es-AR')} qq` : 'pago adelantado';
+    const fechaTxt = (c.adelanto_dia && c.adelanto_mes)
+        ? ` antes del ${String(c.adelanto_dia).padStart(2, '0')}/${String(c.adelanto_mes).padStart(2, '0')} cada año`
+        : '';
+    const tooltip = `Pago adelantado: ${qq}${fechaTxt}`;
+    return `<span class="badge badge-gris" title="${tooltip}">💰 Adelanto</span>`;
 }
 
 /**
@@ -329,6 +443,25 @@ function formatearRolSidebar(rol) {
         'empleado': 'Empleado'
     };
     return nombres[rol] || rol;
+}
+
+/**
+ * Fecha de hoy en formato YYYY-MM-DD respetando la zona horaria LOCAL.
+ * NO uses new Date().toISOString().split('T')[0] porque convierte a UTC
+ * y en Argentina (UTC-3) corre el día después de las 21:00 hs.
+ */
+function fechaHoyStr() {
+    const h = new Date();
+    return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`;
+}
+
+/**
+ * Convierte un objeto Date a YYYY-MM-DD respetando la zona horaria LOCAL.
+ * Mismo motivo que fechaHoyStr(): evitar desfase UTC.
+ */
+function fechaALocalStr(d) {
+    if (!(d instanceof Date)) return null;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 /**

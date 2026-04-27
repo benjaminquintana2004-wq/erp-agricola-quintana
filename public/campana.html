@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalle de campaña — ERP Agrícola Quintana</title>
+
+    <!-- Fuente Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Estilos -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/tablas.css">
+    <link rel="stylesheet" href="/css/formularios.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/campana.css">
+</head>
+<body>
+
+    <!-- Pantalla de carga -->
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando campaña...</p>
+    </div>
+
+    <!-- Contenido principal -->
+    <div id="contenido-principal" class="contenido-principal" style="display: none;">
+        <div class="pagina-contenido">
+
+            <!-- Barra superior con selector y acciones -->
+            <div class="campana-barra-superior no-imprimir">
+                <a class="btn-secundario" href="/campanas.html">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                    Volver a campañas
+                </a>
+
+                <div class="campana-selector-wrap">
+                    <label for="selector-campana" class="campo-label" style="margin: 0;">Campaña</label>
+                    <select id="selector-campana" class="campo-select" onchange="cambiarCampana(this.value)"></select>
+                </div>
+
+                <button class="btn-secundario" onclick="window.print()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    Imprimir / PDF
+                </button>
+            </div>
+
+            <!-- Contenido dinámico -->
+            <div id="campana-contenido"></div>
+
+        </div>
+    </div>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Scripts -->
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/campana.js"></script>
+
+    <script>
+        async function iniciar() {
+            const usuario = await crearLayout(
+                'Detalle de campaña',
+                'Resumen completo del ciclo productivo',
+                ''
+            );
+            if (!usuario) return;
+
+            // Leer ID de la URL (si no hay, muestra la campaña activa)
+            const params = new URLSearchParams(window.location.search);
+            const campanaId = params.get('id');
+
+            await cargarCampanaDetalle(campanaId, usuario);
+        }
+        iniciar();
+    </script>
+
+</body>
+</html>

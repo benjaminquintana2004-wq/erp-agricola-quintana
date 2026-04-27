@@ -26,21 +26,24 @@
 const HOJA_MOVIMIENTOS = 'Movimientos';
 
 // Columnas del sheet, en orden exacto. NO cambiar el orden sin actualizar el ERP.
+// Si necesitás agregar columnas nuevas, hacelo SIEMPRE al final (después de actualizado_en)
+// para no romper sheets existentes.
 const COLS = [
-  'id',             // A  — UUID de Supabase (vacío si fue agregado directo en el sheet)
-  'empresa',        // B
-  'cuenta',         // C
-  'tipo',           // D  — cheque | transferencia
-  'numero_cheque',  // E
-  'fecha_emision',  // F
-  'fecha_cobro',    // G
-  'fecha_balde',    // H
-  'beneficiario',   // I
-  'categoria',      // J
-  'monto',          // K
-  'estado',         // L  — pendiente | cobrado | anulado
-  'notas',          // M
-  'actualizado_en'  // N  — ISO timestamp, para resolución de conflictos
+  'id',                // A  — UUID de Supabase (vacío si fue agregado directo en el sheet)
+  'empresa',           // B
+  'cuenta',            // C
+  'tipo',              // D  — cheque | transferencia
+  'numero_cheque',     // E
+  'fecha_emision',     // F
+  'fecha_cobro',       // G
+  'fecha_balde',       // H
+  'beneficiario',      // I
+  'categoria',         // J
+  'monto',             // K
+  'estado',            // L  — pendiente | cobrado | anulado
+  'notas',             // M
+  'actualizado_en',    // N  — ISO timestamp, para resolución de conflictos
+  'empleado_entrega'   // O  — Nombre del empleado que entregó/manejó el cheque (opcional). El ERP matchea contra empleados.nombre case-insensitive.
 ];
 
 // ── Router ───────────────────────────────────────────────────
@@ -112,11 +115,21 @@ function filaAObjeto(valores) {
   return obj;
 }
 
-// Convierte un objeto en fila de valores ordenada según COLS
+// Columnas que contienen fechas en formato YYYY-MM-DD (deben mostrarse como fecha en Sheets)
+const COLS_FECHA = ['fecha_emision', 'fecha_cobro', 'fecha_balde'];
+
+// Convierte un objeto en fila de valores ordenada según COLS.
+// Las columnas de fecha se convierten a Date para que Sheets las formatee correctamente.
 function objetoAFila(obj) {
   return COLS.map(col => {
     const v = obj[col];
-    return (v === null || v === undefined) ? '' : v;
+    if (v === null || v === undefined || v === '') return '';
+    // Convertir fechas YYYY-MM-DD a Date (mediodía local para evitar desfase de zona horaria)
+    if (COLS_FECHA.includes(col) && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const [anio, mes, dia] = v.split('-').map(Number);
+      return new Date(anio, mes - 1, dia, 12, 0, 0);
+    }
+    return v;
   });
 }
 
@@ -139,6 +152,14 @@ function obtenerHoja() {
     hoja.setColumnWidth(11, 120); // monto
     hoja.setColumnWidth(14, 180); // actualizado_en
   }
+
+  // Aplicar formato de fecha dd/mm/yyyy en columnas F (6), G (7) y H (8)
+  // Se hace siempre (no solo al crear) para que las filas nuevas también queden bien
+  const maxFila = Math.max(hoja.getLastRow(), 2);
+  ['F', 'G', 'H'].forEach(letra => {
+    hoja.getRange(`${letra}2:${letra}${maxFila}`)
+        .setNumberFormat('dd/mm/yyyy');
+  });
 
   return hoja;
 }

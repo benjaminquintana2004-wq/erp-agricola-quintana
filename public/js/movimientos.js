@@ -8,9 +8,12 @@
 // Datos en memoria
 let movimientosCargados = [];
 let arrendadoresParaSelect = [];
+let contratosParaSelect = [];        // contratos con sus arrendadores vinculados
 let movimientoEditandoId = null;
 let filtroTipoActual = 'todos';
 let filtroFacturaActual = null;
+let filtroArrendadorId = null;        // id del arrendador a filtrar (viene de ?arrendador=X)
+let filtroArrendadorNombre = null;    // nombre mostrado en el chip
 let archivoPDFFactura = null;
 
 // ==============================================
@@ -28,32 +31,112 @@ async function cargarMovimientos() {
         </tr>
     `;
 
-    const data = await ejecutarConsulta(
-        db.from('movimientos')
-            .select('*, arrendadores(nombre, cuit, campo)')
-            .order('fecha', { ascending: false }),
-        'cargar movimientos'
-    );
+    // Cargo en paralelo: movimientos + contratos vigentes con sus arrendadores
+    const [data, contratos, arrendadores] = await Promise.all([
+        ejecutarConsulta(
+            db.from('movimientos')
+                .select(`
+                    *,
+                    arrendadores ( nombre, cuit ),
+                    contratos ( id, nombre_grupo, campo )
+                `)
+                .order('fecha', { ascending: false }),
+            'cargar movimientos'
+        ),
+        ejecutarConsulta(
+            db.from('contratos')
+                .select(`
+                    id, nombre_grupo, campo, fecha_fin,
+                    contratos_arrendadores (
+                        arrendador_id,
+                        es_titular_principal,
+                        orden,
+                        arrendadores ( id, nombre, cuit )
+                    )
+                `)
+                .order('fecha_fin', { ascending: false }),
+            'cargar contratos'
+        ),
+        ejecutarConsulta(
+            db.from('arrendadores')
+                .select('id, nombre, cuit')
+                .eq('activo', true)
+                .order('nombre'),
+            'cargar arrendadores'
+        )
+    ]);
 
     if (data === undefined) return;
-
-    // Cargar arrendadores activos para el select
-    const arrendadores = await ejecutarConsulta(
-        db.from('arrendadores')
-            .select('id, nombre, campo, cuit')
-            .eq('activo', true)
-            .order('nombre'),
-        'cargar arrendadores'
-    );
 
     if (arrendadores !== undefined) {
         arrendadoresParaSelect = arrendadores;
     }
+    if (contratos !== undefined) {
+        contratosParaSelect = contratos;
+    }
 
     movimientosCargados = data;
+
+    // Si la URL trae ?arrendador=X, activar filtro por arrendador una vez
+    aplicarFiltroArrendadorDesdeURL();
+
     renderizarTabla(movimientosCargados);
     actualizarContadores(movimientosCargados);
     mostrarAlertasFacturas(movimientosCargados);
+}
+
+/**
+ * Lee ?arrendador=<id> de la URL. Si existe, activa el filtro y
+ * muestra un chip arriba de la tabla que se puede quitar con click.
+ * Se ejecuta sólo una vez por carga — si el usuario limpia el chip
+ * no vuelve a aplicarse.
+ */
+function aplicarFiltroArrendadorDesdeURL() {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('arrendador');
+    if (!id) {
+        renderizarChipFiltroArrendador();
+        return;
+    }
+    // Buscar el nombre en los movimientos ya cargados
+    const mov = movimientosCargados.find(m => m.arrendador_id === id);
+    const nombre = mov?.arrendadores?.nombre || 'este arrendador';
+
+    filtroArrendadorId = id;
+    filtroArrendadorNombre = nombre;
+    renderizarChipFiltroArrendador();
+
+    // Limpiar el query param de la URL para que al recargar/quitar filtro no vuelva
+    const urlLimpia = window.location.pathname;
+    window.history.replaceState({}, '', urlLimpia);
+}
+
+function renderizarChipFiltroArrendador() {
+    const cont = document.getElementById('chip-filtro-arrendador');
+    if (!cont) return;
+    if (!filtroArrendadorId) {
+        cont.innerHTML = '';
+        return;
+    }
+    cont.innerHTML = `
+        <div style="display:inline-flex; align-items:center; gap: var(--espacio-sm);
+                    background: var(--color-dorado-suave); color: var(--color-dorado);
+                    border: 1px solid var(--color-dorado); border-radius: var(--radio-completo);
+                    padding: 6px 14px; margin-bottom: var(--espacio-md); font-size: var(--texto-sm);">
+            <span>Filtrado por: <strong>${filtroArrendadorNombre}</strong></span>
+            <button onclick="limpiarFiltroArrendador()" title="Quitar filtro"
+                style="background: transparent; border: none; color: inherit; cursor: pointer;
+                       font-size: var(--texto-base); line-height: 1; padding: 0 2px;">×</button>
+        </div>
+    `;
+}
+
+function limpiarFiltroArrendador() {
+    filtroArrendadorId = null;
+    filtroArrendadorNombre = null;
+    renderizarChipFiltroArrendador();
+    renderizarTabla(movimientosCargados);
+    actualizarContadores(movimientosCargados);
 }
 
 // ==============================================
@@ -62,6 +145,11 @@ async function cargarMovimientos() {
 
 function renderizarTabla(movimientos) {
     let mostrar = movimientos;
+
+    // Filtro por arrendador (viene de ?arrendador=X en la URL)
+    if (filtroArrendadorId) {
+        mostrar = mostrar.filter(m => m.arrendador_id === filtroArrendadorId);
+    }
 
     // Filtro por tipo (blanco/negro)
     if (filtroTipoActual !== 'todos') {
@@ -105,7 +193,9 @@ function renderizarTabla(movimientos) {
             <td>${formatearFecha(m.fecha)}</td>
             <td>
                 <strong>${nombreArr}</strong>
-                ${m.arrendadores?.cuit ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${m.arrendadores.cuit}</span>` : ''}
+                ${m.contratos?.nombre_grupo && m.contratos.nombre_grupo !== nombreArr
+                    ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${m.contratos.nombre_grupo}${m.contratos.campo ? ' · ' + m.contratos.campo : ''}</span>`
+                    : (m.arrendadores?.cuit ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${m.arrendadores.cuit}</span>` : '')}
             </td>
             <td><strong>${formatearQQ(m.qq)}</strong></td>
             <td>
@@ -175,12 +265,17 @@ function compararPrecio(mov) {
 // ==============================================
 
 function actualizarContadores(movimientos) {
+    // Si hay filtro por arrendador, los contadores reflejan sólo sus movimientos
+    const base = filtroArrendadorId
+        ? movimientos.filter(m => m.arrendador_id === filtroArrendadorId)
+        : movimientos;
+
     const conteos = {
-        todos: movimientos.length,
-        blanco: movimientos.filter(m => m.tipo === 'blanco').length,
-        negro: movimientos.filter(m => m.tipo === 'negro').length,
-        sin_factura: movimientos.filter(m => m.estado_factura === 'sin_factura').length,
-        reclamada: movimientos.filter(m => m.estado_factura === 'reclamada').length
+        todos: base.length,
+        blanco: base.filter(m => m.tipo === 'blanco').length,
+        negro: base.filter(m => m.tipo === 'negro').length,
+        sin_factura: base.filter(m => m.estado_factura === 'sin_factura').length,
+        reclamada: base.filter(m => m.estado_factura === 'reclamada').length
     };
 
     document.getElementById('cont-todos').textContent = conteos.todos;
@@ -323,11 +418,19 @@ async function editarMovimiento(id) {
 }
 
 function abrirModalMovimiento(titulo, datos) {
-    const opcionesArrendadores = arrendadoresParaSelect.map(a =>
-        `<option value="${a.id}" ${datos.arrendador_id === a.id ? 'selected' : ''}>${a.nombre}${a.campo ? ' — ' + a.campo : ''}</option>`
-    ).join('');
+    // Contrato seleccionado: si estamos editando, viene de datos.contrato_id
+    const contratoIdSel = datos.contrato_id || '';
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const opcionesContratos = contratosParaSelect.map(c => {
+        const grupo = c.nombre_grupo || (c.contratos_arrendadores?.[0]?.arrendadores?.nombre) || 'Sin nombre';
+        const campo = c.campo ? ' — ' + c.campo : '';
+        return `<option value="${c.id}" ${contratoIdSel === c.id ? 'selected' : ''}>${grupo}${campo}</option>`;
+    }).join('');
+
+    // Arrendadores del contrato seleccionado (si hay)
+    const opcionesArrendadores = construirOpcionesArrendadoresPorContrato(contratoIdSel, datos.arrendador_id);
+
+    const hoy = fechaHoyStr();
 
     // Sección de PDF de factura
     let pdfSeccion = '';
@@ -352,11 +455,21 @@ function abrirModalMovimiento(titulo, datos) {
         <div class="form-seccion-titulo">Datos del movimiento</div>
 
         <div class="campo-grupo">
-            <label class="campo-label">Arrendador <span class="campo-requerido">*</span></label>
-            <select id="campo-arrendador" class="campo-select">
-                <option value="">Seleccionar arrendador...</option>
+            <label class="campo-label">Contrato <span class="campo-requerido">*</span></label>
+            <select id="campo-contrato" class="campo-select" onchange="actualizarArrendadoresPorContrato()">
+                <option value="">Seleccionar contrato...</option>
+                ${opcionesContratos}
+            </select>
+            <span class="campo-ayuda">Primero el contrato — después aparece quién factura.</span>
+        </div>
+
+        <div class="campo-grupo">
+            <label class="campo-label">Quién factura <span class="campo-requerido">*</span></label>
+            <select id="campo-arrendador" class="campo-select" ${contratoIdSel ? '' : 'disabled'}>
+                <option value="">${contratoIdSel ? 'Seleccionar arrendador...' : 'Elegí primero un contrato'}</option>
                 ${opcionesArrendadores}
             </select>
+            <span class="campo-ayuda">Persona o empresa del contrato que emite la factura.</span>
         </div>
 
         <div class="campo-grupo">
@@ -377,7 +490,7 @@ function abrirModalMovimiento(titulo, datos) {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-fecha" class="campo-input" value="${datos.fecha || hoy}">
+                <input type="text" data-fecha id="campo-fecha" class="campo-input" value="${isoADDMM(datos.fecha || hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Quintales <span class="campo-requerido">*</span></label>
@@ -426,7 +539,7 @@ function abrirModalMovimiento(titulo, datos) {
                 </div>
                 <div class="campo-grupo">
                     <label class="campo-label">Vencimiento CAE</label>
-                    <input type="date" id="campo-cae-venc" class="campo-input" value="${datos.cae_vencimiento || ''}">
+                    <input type="text" data-fecha id="campo-cae-venc" class="campo-input" value="${isoADDMM(datos.cae_vencimiento)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
                 </div>
             </div>
 
@@ -473,11 +586,71 @@ function abrirModalMovimiento(titulo, datos) {
     // Listener para validar CAE en tiempo real
     const caeVenc = document.getElementById('campo-cae-venc');
     if (caeVenc) {
-        caeVenc.addEventListener('change', validarCAE);
+        caeVenc.addEventListener('input', validarCAE);
+        caeVenc.addEventListener('blur', validarCAE);
     }
 
     // Configurar drag and drop
     configurarDragDropFactura();
+}
+
+/**
+ * Arma las <option> del select "Quién factura" según el contrato elegido.
+ * Devuelve string HTML.
+ */
+function construirOpcionesArrendadoresPorContrato(contratoId, arrendadorIdSel) {
+    if (!contratoId) return '';
+    const contrato = contratosParaSelect.find(c => c.id === contratoId);
+    if (!contrato) return '';
+
+    // Ordeno: titular primero, después por orden
+    const vinculos = (contrato.contratos_arrendadores || [])
+        .slice()
+        .sort((a, b) => {
+            if (a.es_titular_principal !== b.es_titular_principal) {
+                return a.es_titular_principal ? -1 : 1;
+            }
+            return (a.orden || 0) - (b.orden || 0);
+        });
+
+    return vinculos.map(v => {
+        const a = v.arrendadores;
+        if (!a) return '';
+        const marca = v.es_titular_principal ? ' ★' : '';
+        return `<option value="${a.id}" ${arrendadorIdSel === a.id ? 'selected' : ''}>${a.nombre}${marca}</option>`;
+    }).join('');
+}
+
+/**
+ * Se dispara cuando el usuario cambia el select de contrato.
+ * Repuebla el select de "quién factura" con los arrendadores de ese contrato.
+ * Si solo hay uno, lo preselecciona automáticamente.
+ */
+function actualizarArrendadoresPorContrato() {
+    const selContrato = document.getElementById('campo-contrato');
+    const selArrendador = document.getElementById('campo-arrendador');
+    if (!selContrato || !selArrendador) return;
+
+    const contratoId = selContrato.value;
+    const opciones = construirOpcionesArrendadoresPorContrato(contratoId, null);
+
+    if (!contratoId) {
+        selArrendador.innerHTML = '<option value="">Elegí primero un contrato</option>';
+        selArrendador.disabled = true;
+        return;
+    }
+
+    const contrato = contratosParaSelect.find(c => c.id === contratoId);
+    const cantidadArr = (contrato?.contratos_arrendadores || []).length;
+
+    selArrendador.disabled = false;
+    selArrendador.innerHTML = `<option value="">Seleccionar arrendador...</option>${opciones}`;
+
+    // Si hay un solo arrendador, lo preselecciono
+    if (cantidadArr === 1) {
+        const unico = contrato.contratos_arrendadores[0]?.arrendadores?.id;
+        if (unico) selArrendador.value = unico;
+    }
 }
 
 function seleccionarTipo(label, tipo) {
@@ -491,18 +664,18 @@ function seleccionarTipo(label, tipo) {
 // ==============================================
 
 function validarCAE() {
-    const caeVenc = document.getElementById('campo-cae-venc')?.value;
+    const caeVencISO = ddmmAISO(document.getElementById('campo-cae-venc')?.value);
     const contenedor = document.getElementById('cae-alerta');
     if (!contenedor) return;
 
-    if (!caeVenc) {
+    if (!caeVencISO) {
         contenedor.innerHTML = '';
         return;
     }
 
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
-    const venc = new Date(caeVenc + 'T00:00:00');
+    const venc = new Date(caeVencISO + 'T00:00:00');
 
     if (venc < hoy) {
         contenedor.innerHTML = `
@@ -779,7 +952,7 @@ async function autocompletarFactura(datos) {
 
     if (datos.fecha) {
         const campo = document.getElementById('campo-fecha');
-        if (campo) campo.value = datos.fecha;
+        if (campo) campo.value = isoADDMM(datos.fecha);
     }
     if (datos.qq) {
         const campo = document.getElementById('campo-qq');
@@ -808,7 +981,7 @@ async function autocompletarFactura(datos) {
     if (datos.cae_vencimiento) {
         const campo = document.getElementById('campo-cae-venc');
         if (campo) {
-            campo.value = datos.cae_vencimiento;
+            campo.value = isoADDMM(datos.cae_vencimiento);
             validarCAE(); // Validar automáticamente
         }
     }
@@ -856,9 +1029,10 @@ async function verPDFFactura(pdfPath) {
 // ==============================================
 
 async function guardarMovimiento() {
+    const contratoId = document.getElementById('campo-contrato')?.value;
     const arrendadorId = document.getElementById('campo-arrendador')?.value;
     const tipo = document.querySelector('input[name="tipo"]:checked')?.value;
-    const fecha = document.getElementById('campo-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-fecha')?.value);
     const qq = document.getElementById('campo-qq')?.value;
     const precio = document.getElementById('campo-precio')?.value;
     const moneda = document.getElementById('campo-moneda')?.value;
@@ -866,12 +1040,16 @@ async function guardarMovimiento() {
     const puntoVenta = document.getElementById('campo-punto-venta')?.value.trim();
     const nroComprobante = document.getElementById('campo-nro-comprobante')?.value.trim();
     const cae = document.getElementById('campo-cae')?.value.trim();
-    const caeVenc = document.getElementById('campo-cae-venc')?.value;
+    const caeVenc = ddmmAISO(document.getElementById('campo-cae-venc')?.value);
     const estadoFactura = document.getElementById('campo-estado-factura')?.value;
 
     // Validaciones
+    if (!contratoId) {
+        mostrarError('Seleccioná un contrato.');
+        return;
+    }
     if (!arrendadorId) {
-        mostrarError('Seleccioná un arrendador.');
+        mostrarError('Seleccioná quién factura (arrendador del contrato).');
         return;
     }
     if (!tipo) {
@@ -919,6 +1097,7 @@ async function guardarMovimiento() {
     }
 
     const datosMovimiento = {
+        contrato_id: contratoId,
         arrendador_id: arrendadorId,
         fecha: fecha,
         qq: parseFloat(qq),
@@ -949,9 +1128,9 @@ async function guardarMovimiento() {
             'crear movimiento'
         );
 
-        // Actualizar saldo del arrendador y crear transferencia en tesorería
+        // Actualizar saldo del CONTRATO y crear transferencia en tesorería
         if (resultado && resultado.length > 0) {
-            await actualizarSaldo(arrendadorId, tipo, parseFloat(qq));
+            await actualizarSaldo(contratoId, tipo, parseFloat(qq));
 
             // Solo si tiene precio: crear la transferencia pendiente en tesorería
             // (fecha de cobro = fecha del aviso + 7 días, según la regla del negocio)
@@ -1008,11 +1187,11 @@ async function subirPDFFactura(archivo, arrendadorNombre) {
 // ==============================================
 
 /**
- * Descuenta los qq del saldo del arrendador para la campaña activa.
- * Si no existe un registro de saldo, lo crea.
+ * Descuenta los qq del saldo del CONTRATO para la campaña activa.
+ * Si no existe el registro de saldo, lo crea inicializándolo con los
+ * qq pactados del contrato y luego descontando.
  */
-async function actualizarSaldo(arrendadorId, tipo, qq) {
-    // Obtener campaña activa
+async function actualizarSaldo(contratoId, tipo, qq) {
     const campanas = await ejecutarConsulta(
         db.from('campanas').select('id').eq('activa', true).limit(1),
         'obtener campaña activa'
@@ -1021,11 +1200,10 @@ async function actualizarSaldo(arrendadorId, tipo, qq) {
     const campanaId = campanas?.[0]?.id;
     if (!campanaId) return;
 
-    // Buscar saldo existente
     const saldos = await ejecutarConsulta(
         db.from('saldos')
             .select('*')
-            .eq('arrendador_id', arrendadorId)
+            .eq('contrato_id', contratoId)
             .eq('campana_id', campanaId),
         'buscar saldo'
     );
@@ -1033,7 +1211,6 @@ async function actualizarSaldo(arrendadorId, tipo, qq) {
     const columna = tipo === 'blanco' ? 'qq_deuda_blanco' : 'qq_deuda_negro';
 
     if (saldos && saldos.length > 0) {
-        // Actualizar saldo existente — restar los qq vendidos
         const saldoActual = saldos[0][columna] || 0;
         const nuevoSaldo = saldoActual - qq;
 
@@ -1044,15 +1221,29 @@ async function actualizarSaldo(arrendadorId, tipo, qq) {
             'actualizar saldo'
         );
     } else {
-        // Crear saldo nuevo con los qq en negativo (se vendieron antes de cargar la deuda)
+        // Inicializar saldo desde el contrato y descontar
+        const contrato = await ejecutarConsulta(
+            db.from('contratos')
+                .select('qq_pactados_anual, qq_negro_anual')
+                .eq('id', contratoId)
+                .single(),
+            'buscar contrato para inicializar saldo'
+        );
+
+        let qqBlancoInicial = parseFloat(contrato?.qq_pactados_anual || 0);
+        let qqNegroInicial = parseFloat(contrato?.qq_negro_anual || 0);
+
+        if (tipo === 'blanco') qqBlancoInicial -= qq;
+        else qqNegroInicial -= qq;
+
         await ejecutarConsulta(
-            db.from('saldos')
-                .insert({
-                    arrendador_id: arrendadorId,
-                    campana_id: campanaId,
-                    [columna]: -qq
-                }),
-            'crear saldo'
+            db.from('saldos').insert({
+                contrato_id: contratoId,
+                campana_id: campanaId,
+                qq_deuda_blanco: qqBlancoInicial,
+                qq_deuda_negro: qqNegroInicial
+            }),
+            'crear saldo inicializado'
         );
     }
 }
@@ -1069,6 +1260,8 @@ function verMovimiento(id) {
     }
 
     const nombreArr = m.arrendadores?.nombre || 'Sin arrendador';
+    const grupoContrato = m.contratos?.nombre_grupo
+        || (m.contratos?.campo ? `Campo ${m.contratos.campo}` : '—');
     const total = (m.qq && m.precio_quintal) ? m.qq * m.precio_quintal : null;
     const tipoBadge = m.tipo === 'blanco'
         ? '<span class="badge badge-blanco">Blanco</span>'
@@ -1081,7 +1274,11 @@ function verMovimiento(id) {
     const contenido = `
         <div class="contrato-detalle-grid">
             <div class="contrato-detalle-item">
-                <span class="contrato-detalle-label">Arrendador</span>
+                <span class="contrato-detalle-label">Contrato</span>
+                <span class="contrato-detalle-valor">${grupoContrato}</span>
+            </div>
+            <div class="contrato-detalle-item">
+                <span class="contrato-detalle-label">Quién facturó</span>
                 <span class="contrato-detalle-valor"><strong>${nombreArr}</strong></span>
             </div>
             <div class="contrato-detalle-item">
@@ -1168,7 +1365,7 @@ function confirmarEliminarMovimiento(id, nombreArrendador) {
             ¿Seguro que querés eliminar este movimiento de <strong>${nombreArrendador}</strong>?
         </p>
         <p style="font-size: var(--texto-sm); color: var(--color-texto-secundario);">
-            El saldo del arrendador no se revertirá automáticamente.
+            Los qq se devolverán automáticamente al saldo del arrendador.
             Esta acción no se puede deshacer.
         </p>
     `;
@@ -1182,14 +1379,51 @@ function confirmarEliminarMovimiento(id, nombreArrendador) {
 }
 
 async function eliminarMovimiento(id) {
+    // Obtener los datos del movimiento ANTES de borrarlo (para revertir el saldo)
+    const mov = movimientosCargados.find(m => m.id === id);
+
     const resultado = await ejecutarConsulta(
         db.from('movimientos').delete().eq('id', id),
         'eliminar movimiento'
     );
 
     if (resultado !== undefined) {
-        mostrarExito('Movimiento eliminado');
+        // Devolver los qq al saldo del contrato
+        if (mov && mov.contrato_id && mov.qq) {
+            await revertirSaldoMovimiento(mov.contrato_id, mov.tipo, parseFloat(mov.qq));
+        }
+        mostrarExito('Movimiento eliminado y saldo revertido');
         await cargarMovimientos();
+    }
+}
+
+/**
+ * Devuelve qq al saldo del contrato (usado al eliminar un movimiento).
+ * Suma los qq a la columna correspondiente (blanco o negro) de la campaña activa.
+ */
+async function revertirSaldoMovimiento(contratoId, tipo, qq) {
+    const campanas = await ejecutarConsulta(
+        db.from('campanas').select('id').eq('activa', true).limit(1),
+        'obtener campaña activa'
+    );
+    const campanaId = campanas?.[0]?.id;
+    if (!campanaId) return;
+
+    const saldos = await ejecutarConsulta(
+        db.from('saldos')
+            .select('*')
+            .eq('contrato_id', contratoId)
+            .eq('campana_id', campanaId),
+        'buscar saldo para revertir'
+    );
+
+    if (saldos && saldos.length > 0) {
+        const columna = tipo === 'blanco' ? 'qq_deuda_blanco' : 'qq_deuda_negro';
+        const nuevo = parseFloat(saldos[0][columna] || 0) + qq;
+        await ejecutarConsulta(
+            db.from('saldos').update({ [columna]: nuevo }).eq('id', saldos[0].id),
+            'revertir saldo'
+        );
     }
 }
 
@@ -1236,14 +1470,14 @@ async function crearTransferenciaTesoreria(movimientoId, arrendadorId, fechaAvis
         // Fecha de cobro = fecha del aviso + 7 días
         const fechaCobro = new Date(fechaAviso + 'T12:00:00');
         fechaCobro.setDate(fechaCobro.getDate() + 7);
-        const fechaCobroStr = fechaCobro.toISOString().split('T')[0];
+        const fechaCobroStr = fechaALocalStr(fechaCobro);
 
         // Calcular fecha_balde (mismo algoritmo que el trigger SQL)
         const dia = fechaCobro.getDate();
         const offset = dia % 5;
         const balde = new Date(fechaCobro);
         balde.setDate(dia - offset);
-        const fechaBaldeStr = balde.toISOString().split('T')[0];
+        const fechaBaldeStr = fechaALocalStr(balde);
 
         // Nombre del arrendador para las notas
         const arrendador = arrendadoresParaSelect.find(a => a.id === arrendadorId);

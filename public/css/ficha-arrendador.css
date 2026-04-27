@@ -1,0 +1,605 @@
+/* ==============================================
+   ficha-arrendador.css
+   Estilos de la ficha integral del arrendador.
+   Incluye estilos de pantalla + print para exportar a PDF.
+   ============================================== */
+
+/* Barra superior con volver + acciones */
+.ficha-barra-superior {
+    display: flex;
+    gap: var(--espacio-sm);
+    align-items: center;
+    margin-bottom: var(--espacio-lg);
+}
+
+/* Card genérica de la ficha */
+.ficha-card {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-lg);
+    margin-bottom: var(--espacio-lg);
+}
+
+.ficha-seccion-titulo {
+    font-size: var(--texto-lg);
+    color: var(--color-dorado);
+    margin: 0 0 var(--espacio-md) 0;
+    padding-bottom: var(--espacio-sm);
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.ficha-vacio {
+    color: var(--color-texto-tenue);
+    text-align: center;
+    padding: var(--espacio-lg) 0;
+    font-style: italic;
+}
+
+/* ==============================================
+   Encabezado del arrendador
+   ============================================== */
+.ficha-encabezado-titulo {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-md);
+    flex-wrap: wrap;
+    margin-bottom: var(--espacio-sm);
+}
+
+.ficha-encabezado-titulo h2 {
+    margin: 0;
+    font-size: var(--texto-2xl);
+    color: var(--color-texto);
+}
+
+.ficha-encabezado-ids {
+    color: var(--color-texto-secundario);
+    font-size: var(--texto-sm);
+    margin-bottom: var(--espacio-sm);
+}
+
+.ficha-encabezado-contactos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--espacio-md);
+    margin-top: var(--espacio-sm);
+}
+
+.ficha-contacto {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-texto-secundario);
+    text-decoration: none;
+    font-size: var(--texto-sm);
+    padding: 4px 10px;
+    background-color: var(--color-fondo-secundario);
+    border-radius: var(--radio-sm);
+    border: 1px solid var(--color-borde);
+}
+
+.ficha-contacto[href]:hover {
+    color: var(--color-dorado);
+    border-color: var(--color-dorado);
+}
+
+/* ==============================================
+   Acciones rápidas (WhatsApp, llamar, email, mapa)
+   ============================================== */
+.ficha-acciones-rapidas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-lg);
+}
+
+.ficha-accion {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-md);
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    color: var(--color-texto);
+    text-decoration: none;
+    transition: all var(--transicion-rapida);
+    cursor: pointer;
+}
+
+.ficha-accion:hover:not(.ficha-accion-deshabilitada) {
+    background-color: var(--color-fondo-hover);
+    border-color: var(--color-dorado);
+    transform: translateY(-1px);
+    box-shadow: var(--sombra-sm);
+}
+
+.ficha-accion-icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    border-radius: var(--radio-sm);
+    background-color: var(--color-dorado-suave);
+    color: var(--color-dorado);
+    flex-shrink: 0;
+}
+
+.ficha-accion-icono svg {
+    width: 18px;
+    height: 18px;
+}
+
+.ficha-accion-texto {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;           /* permite truncar */
+    overflow: hidden;
+}
+
+.ficha-accion-texto strong {
+    font-size: var(--texto-sm);
+    color: var(--color-texto);
+    line-height: 1.2;
+}
+
+.ficha-accion-texto small {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ficha-accion-deshabilitada {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.ficha-accion-deshabilitada .ficha-accion-icono {
+    background-color: var(--color-fondo-secundario);
+    color: var(--color-texto-tenue);
+}
+
+/* ==============================================
+   Notas editables
+   ============================================== */
+.ficha-notas-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--espacio-md);
+    padding-bottom: var(--espacio-sm);
+    border-bottom: 1px solid var(--color-borde);
+    gap: var(--espacio-sm);
+}
+
+.ficha-notas-contenido {
+    color: var(--color-texto);
+    font-size: var(--texto-base);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.ficha-notas-vacio {
+    color: var(--color-texto-tenue);
+    font-style: italic;
+}
+
+.btn-pequeno {
+    padding: 6px 12px !important;
+    font-size: var(--texto-sm) !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ==============================================
+   Stats row
+   ============================================== */
+.ficha-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+}
+
+.ficha-stat {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-md);
+    text-align: center;
+}
+
+.ficha-stat-valor {
+    font-size: var(--texto-2xl);
+    font-weight: 700;
+    color: var(--color-texto);
+    line-height: 1.2;
+}
+
+.ficha-stat-label {
+    color: var(--color-texto-secundario);
+    font-size: var(--texto-sm);
+    margin-top: var(--espacio-xs);
+}
+
+.ficha-stat-sub {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+    margin-top: 4px;
+}
+
+.ficha-stat-alerta {
+    border-color: var(--color-error);
+}
+
+/* ==============================================
+   Línea de tiempo (eventos cronológicos)
+   ============================================== */
+.linea-tiempo {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    position: relative;
+}
+
+/* Línea vertical central */
+.linea-tiempo::before {
+    content: '';
+    position: absolute;
+    left: 108px;            /* alineado con los dots */
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background-color: var(--color-borde);
+}
+
+.linea-tiempo-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 100px 16px 1fr;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) 0;
+    align-items: flex-start;
+}
+
+.linea-tiempo-fecha {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    text-align: right;
+    padding-top: 2px;
+    white-space: nowrap;
+}
+
+.linea-tiempo-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: var(--color-texto-tenue);
+    border: 2px solid var(--color-fondo-tarjeta);
+    margin-top: 2px;
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 0 0 2px var(--color-borde);
+}
+
+/* Variantes por tipo de evento */
+.linea-tiempo-dot-contrato_inicio     { background-color: var(--color-verde);   box-shadow: 0 0 0 2px var(--color-verde); }
+.linea-tiempo-dot-contrato_fin        { background-color: var(--color-texto-tenue); box-shadow: 0 0 0 2px var(--color-texto-tenue); }
+.linea-tiempo-dot-contrato_por_vencer { background-color: var(--color-alerta);  box-shadow: 0 0 0 2px var(--color-alerta); }
+.linea-tiempo-dot-contrato_vencido    { background-color: var(--color-error);   box-shadow: 0 0 0 2px var(--color-error); }
+.linea-tiempo-dot-movimiento          { background-color: var(--color-dorado);  box-shadow: 0 0 0 2px var(--color-dorado); }
+.linea-tiempo-dot-mov_ok              { background-color: var(--color-verde);   box-shadow: 0 0 0 2px var(--color-verde); }
+.linea-tiempo-dot-mov_pendiente       { background-color: var(--color-alerta);  box-shadow: 0 0 0 2px var(--color-alerta); }
+
+.linea-tiempo-contenido {
+    padding-left: var(--espacio-sm);
+    min-width: 0;
+}
+
+.linea-tiempo-contenido strong {
+    font-size: var(--texto-sm);
+    color: var(--color-texto);
+    line-height: 1.3;
+}
+
+.linea-tiempo-detalle {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-secundario);
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+/* Evento destacado: movimientos grandes */
+.linea-tiempo-destacado .linea-tiempo-contenido strong {
+    color: var(--color-dorado);
+    font-size: var(--texto-base);
+}
+
+.linea-tiempo-destacado .linea-tiempo-dot {
+    width: 18px;
+    height: 18px;
+    margin-top: 0;
+    box-shadow: 0 0 0 3px var(--color-dorado), 0 0 12px rgba(201, 168, 76, 0.4);
+}
+
+/* Botón "Ver más" y lista de eventos ocultos */
+.linea-tiempo-ver-mas {
+    text-align: center;
+    margin-top: var(--espacio-md);
+    padding-top: var(--espacio-md);
+    border-top: 1px dashed var(--color-borde);
+}
+
+.linea-tiempo-ocultos {
+    margin-top: var(--espacio-md);
+}
+
+/* Responsive: en pantallas angostas, fecha arriba del evento */
+@media (max-width: 640px) {
+    .linea-tiempo::before { display: none; }
+
+    .linea-tiempo-item {
+        grid-template-columns: 16px 1fr;
+        grid-template-areas:
+            "dot fecha"
+            "dot contenido";
+        gap: 4px var(--espacio-sm);
+    }
+    .linea-tiempo-fecha { grid-area: fecha; text-align: left; }
+    .linea-tiempo-dot { grid-area: dot; grid-row: span 2; margin-top: 4px; }
+    .linea-tiempo-contenido { grid-area: contenido; padding-left: 0; }
+}
+
+/* ==============================================
+   Timeline de campañas
+   ============================================== */
+.ficha-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-md);
+}
+
+.ficha-campana {
+    background-color: var(--color-fondo-secundario);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-md);
+}
+
+.ficha-campana-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--espacio-md);
+    flex-wrap: wrap;
+    gap: var(--espacio-sm);
+}
+
+.ficha-campana-header > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+}
+
+.ficha-campana-header strong {
+    font-size: var(--texto-base);
+    color: var(--color-texto);
+}
+
+.ficha-campana-meta {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+}
+
+.ficha-campana-cifras {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-md);
+}
+
+.ficha-campana-cifras > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ficha-campana-label {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ficha-campana-cifras strong {
+    font-size: var(--texto-lg);
+    color: var(--color-texto);
+}
+
+.ficha-campana-cifras small {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+}
+
+/* Barra de progreso */
+.ficha-barra-progreso {
+    height: 8px;
+    background-color: var(--color-fondo);
+    border-radius: var(--radio-completo);
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.ficha-barra-relleno {
+    height: 100%;
+    border-radius: var(--radio-completo);
+    transition: width var(--transicion-normal);
+}
+
+.barra-activa { background-color: var(--color-dorado); }
+.barra-completa { background-color: var(--color-verde); }
+.barra-pendiente { background-color: var(--color-alerta); }
+.barra-historica { background-color: var(--color-texto-tenue); }
+
+.ficha-campana-porcentaje {
+    text-align: right;
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+}
+
+/* Ver más movimientos */
+.ficha-ver-todos {
+    margin-top: var(--espacio-md);
+    text-align: center;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .ficha-campana-cifras {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ==============================================
+   PRINT STYLES — para exportar ficha como PDF
+   El navegador ofrece "Guardar como PDF" al imprimir
+   ============================================== */
+.no-imprimir { /* placeholder para pantalla */ }
+
+@media print {
+    /* Forzar fondo claro + texto oscuro */
+    body, .contenido-principal, .pagina-contenido {
+        background: white !important;
+        color: #000 !important;
+    }
+
+    /* Ocultar todo lo que no sea la ficha */
+    .sidebar,
+    .pagina-header-acciones,
+    .no-imprimir,
+    .ficha-barra-superior {
+        display: none !important;
+    }
+
+    /* El contenido ocupa todo el ancho, sin margen de sidebar */
+    .contenido-principal {
+        margin-left: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    .pagina-contenido {
+        padding: 0 !important;
+        max-width: 100% !important;
+    }
+
+    /* Header de la página: dejar el título, sacar fondo */
+    .pagina-header {
+        background: white !important;
+        border: none !important;
+        padding: 0 0 12px 0 !important;
+        margin-bottom: 12px !important;
+        border-bottom: 2px solid #000 !important;
+    }
+
+    .pagina-header h1,
+    .pagina-header p {
+        color: #000 !important;
+    }
+
+    /* Cards sin fondo oscuro */
+    .ficha-card,
+    .ficha-stat,
+    .ficha-campana {
+        background: white !important;
+        border: 1px solid #999 !important;
+        color: #000 !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .ficha-seccion-titulo {
+        color: #000 !important;
+        border-bottom-color: #000 !important;
+    }
+
+    .ficha-stat-valor,
+    .ficha-campana-cifras strong,
+    .ficha-encabezado-titulo h2 {
+        color: #000 !important;
+    }
+
+    .ficha-stat-label,
+    .ficha-stat-sub,
+    .ficha-campana-label,
+    .ficha-campana-meta,
+    .ficha-campana-porcentaje,
+    .ficha-encabezado-ids {
+        color: #444 !important;
+    }
+
+    .ficha-contacto {
+        background: white !important;
+        border: 1px solid #999 !important;
+        color: #000 !important;
+    }
+
+    /* Barra de progreso — sin colores de fondo oscuro */
+    .ficha-barra-progreso {
+        background: #eee !important;
+        border: 1px solid #999 !important;
+    }
+
+    .barra-activa,
+    .barra-completa {
+        background: #444 !important;
+    }
+
+    .barra-pendiente {
+        background: #888 !important;
+    }
+
+    .barra-historica {
+        background: #bbb !important;
+    }
+
+    /* Tabla dentro de la ficha */
+    .tabla {
+        color: #000 !important;
+    }
+
+    .tabla thead th {
+        background: #eee !important;
+        color: #000 !important;
+        border-bottom: 1px solid #000 !important;
+    }
+
+    .tabla tbody tr,
+    .tabla tbody td {
+        background: white !important;
+        color: #000 !important;
+        border-color: #ccc !important;
+    }
+
+    /* Badges visibles en B/N */
+    .badge {
+        border: 1px solid #666 !important;
+        background: white !important;
+        color: #000 !important;
+    }
+
+    /* Ajustar página A4 */
+    @page {
+        size: A4;
+        margin: 1.5cm;
+    }
+}

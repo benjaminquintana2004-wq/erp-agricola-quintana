@@ -1,0 +1,467 @@
+/* ==============================================
+   campana.css — Página de detalle de campaña
+   ============================================== */
+
+/* ==============================================
+   BARRA SUPERIOR (selector + acciones)
+   ============================================== */
+
+.campana-barra-superior {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+    flex-wrap: wrap;
+}
+
+.campana-selector-wrap {
+    flex: 1;
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.campana-selector-wrap .campo-select {
+    min-width: 200px;
+}
+
+/* ==============================================
+   HEADER DE LA CAMPAÑA
+   ============================================== */
+
+.campana-header-detalle {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--espacio-md);
+    padding: var(--espacio-lg);
+    margin-bottom: var(--espacio-lg);
+    background: linear-gradient(135deg, var(--color-fondo-tarjeta) 0%, rgba(201, 168, 76, 0.05) 100%);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    position: relative;
+    overflow: hidden;
+    flex-wrap: wrap;
+}
+
+.campana-header-detalle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--color-dorado), transparent);
+}
+
+.campana-titulo-grande {
+    font-size: var(--texto-3xl, 2rem);
+    font-weight: 700;
+    color: var(--color-texto);
+    margin: 0 0 6px 0;
+    letter-spacing: -0.02em;
+}
+
+.campana-periodo-texto {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--espacio-xs);
+}
+
+.campana-dias-restantes {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-secundario);
+    background-color: var(--color-fondo-secundario);
+    padding: var(--espacio-sm) var(--espacio-md);
+    border-radius: var(--radio-md);
+    border: 1px solid var(--color-borde);
+}
+
+.campana-dias-restantes strong {
+    color: var(--color-dorado);
+    font-size: var(--texto-lg);
+    font-weight: 700;
+}
+
+/* ==============================================
+   KPIs DE LA CAMPAÑA
+   ============================================== */
+
+.campana-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-lg);
+}
+
+/* ==============================================
+   BARRA DE CUMPLIMIENTO GLOBAL
+   ============================================== */
+
+.campana-cumplimiento-global {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    padding: var(--espacio-lg);
+    margin-bottom: var(--espacio-lg);
+}
+
+.cumplimiento-label-grande {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--espacio-sm);
+    font-size: var(--texto-base);
+    font-weight: 600;
+    color: var(--color-texto);
+}
+
+.cumplimiento-pct-grande {
+    font-size: var(--texto-2xl);
+    font-weight: 700;
+    color: var(--color-dorado);
+    font-variant-numeric: tabular-nums;
+}
+
+.cumplimiento-detalle-grande {
+    margin-top: var(--espacio-sm);
+    font-size: var(--texto-sm);
+    color: var(--color-texto-tenue);
+}
+
+/* ==============================================
+   SPLIT POR EMPRESA
+   ============================================== */
+
+.campana-empresas-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-xl);
+}
+
+.campana-empresa-card {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    padding: var(--espacio-lg);
+}
+
+.campana-empresa-nombre {
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    color: var(--color-dorado);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--espacio-md);
+}
+
+.campana-empresa-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--espacio-md);
+}
+
+.campana-empresa-valor {
+    font-size: var(--texto-xl);
+    font-weight: 700;
+    color: var(--color-texto);
+    line-height: 1.1;
+}
+
+.campana-empresa-label {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    margin-top: 2px;
+}
+
+/* ==============================================
+   SECCIONES
+   ============================================== */
+
+.campana-seccion {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    margin-bottom: var(--espacio-lg);
+    overflow: hidden;
+}
+
+.campana-seccion-titulo {
+    font-size: var(--texto-base);
+    font-weight: 600;
+    color: var(--color-texto);
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--espacio-md);
+}
+
+.campana-seccion-total {
+    font-size: var(--texto-sm);
+    font-weight: 500;
+    color: var(--color-dorado);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==============================================
+   ALERTAS DE ADELANTOS
+   ============================================== */
+
+.adelantos-lista {
+    display: flex;
+    flex-direction: column;
+}
+
+.adelanto-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--espacio-md);
+    padding: var(--espacio-md) var(--espacio-lg);
+    border-bottom: 1px solid var(--color-borde);
+    text-decoration: none;
+    color: inherit;
+    transition: background-color var(--transicion-rapida);
+    border-left: 3px solid transparent;
+}
+
+.adelanto-item:last-child {
+    border-bottom: none;
+}
+
+.adelanto-item:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.adelanto-item.adelanto-ok {
+    border-left-color: var(--color-verde);
+}
+
+.adelanto-item.adelanto-vencido {
+    border-left-color: var(--color-error);
+    background-color: rgba(201, 76, 76, 0.04);
+}
+
+.adelanto-item.adelanto-proximo {
+    border-left-color: #e8b74a;
+}
+
+.adelanto-izq {
+    flex: 1;
+    min-width: 0;
+}
+
+.adelanto-nombre {
+    font-size: var(--texto-base);
+    font-weight: 600;
+    color: var(--color-texto);
+    margin-bottom: 4px;
+}
+
+.adelanto-detalle {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    margin-bottom: 4px;
+}
+
+.adelanto-detalle-estado {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-secundario);
+}
+
+.adelanto-der {
+    flex-shrink: 0;
+}
+
+.adelanto-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: var(--radio-sm, 4px);
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.adelanto-ok .adelanto-badge {
+    background-color: var(--color-verde-suave);
+    color: var(--color-verde);
+}
+
+.adelanto-vencido .adelanto-badge {
+    background-color: rgba(201, 76, 76, 0.15);
+    color: var(--color-error);
+}
+
+.adelanto-proximo .adelanto-badge {
+    background-color: rgba(232, 183, 74, 0.15);
+    color: #e8b74a;
+}
+
+/* ==============================================
+   TABLA DE ARRENDADORES — Cumplimiento inline
+   ============================================== */
+
+.tabla-cumplimiento {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+}
+
+.tabla-cumplimiento .cumplimiento-barra-track {
+    flex: 1;
+    min-width: 60px;
+    margin-bottom: 0;
+}
+
+.tabla-cumplimiento-pct {
+    font-size: var(--texto-xs);
+    font-weight: 700;
+    color: var(--color-texto-secundario);
+    font-variant-numeric: tabular-nums;
+    min-width: 36px;
+    text-align: right;
+}
+
+.tabla-estado-ok {
+    color: var(--color-verde);
+    font-weight: 600;
+    font-size: var(--texto-xs);
+}
+
+.tabla-estado-rojo {
+    color: var(--color-error);
+    font-weight: 600;
+    font-size: var(--texto-xs);
+}
+
+.tabla-estado-amarillo {
+    color: #e8b74a;
+    font-weight: 600;
+    font-size: var(--texto-xs);
+}
+
+.tabla-estado-gris {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+}
+
+.tabla-texto-tenue {
+    color: var(--color-texto-tenue);
+    font-size: var(--texto-xs);
+    margin-top: 2px;
+}
+
+/* ==============================================
+   ADELANTOS PARA PRÓXIMA CAMPAÑA
+   ============================================== */
+
+.adelantos-siguiente-info {
+    padding: var(--espacio-md) var(--espacio-lg);
+    background-color: rgba(201, 168, 76, 0.05);
+    border-bottom: 1px solid var(--color-borde);
+    font-size: var(--texto-xs);
+    color: var(--color-texto-secundario);
+    line-height: 1.5;
+}
+
+/* ==============================================
+   RESPONSIVE
+   ============================================== */
+
+@media (max-width: 768px) {
+    .campana-empresas-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .campana-empresa-stats {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .campana-titulo-grande {
+        font-size: var(--texto-2xl);
+    }
+}
+
+/* ==============================================
+   IMPRESIÓN / PDF
+   ============================================== */
+
+@media print {
+    .no-imprimir,
+    .sidebar,
+    .barra-superior,
+    header,
+    nav {
+        display: none !important;
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+    }
+
+    .contenido-principal,
+    .pagina-contenido {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .campana-header-detalle,
+    .campana-cumplimiento-global,
+    .campana-empresa-card,
+    .campana-seccion,
+    .kpi-tarjeta {
+        background: white !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .campana-titulo-grande,
+    .kpi-valor,
+    .campana-empresa-valor,
+    .cumplimiento-pct-grande,
+    .adelanto-nombre,
+    .campana-seccion-titulo {
+        color: black !important;
+    }
+
+    .kpi-label,
+    .campana-empresa-label,
+    .campana-periodo-texto,
+    .cumplimiento-detalle-grande,
+    .adelanto-detalle,
+    .adelantos-siguiente-info {
+        color: #555 !important;
+    }
+
+    .tabla {
+        font-size: 11px;
+    }
+
+    .tabla th,
+    .tabla td {
+        color: black !important;
+        border-color: #ccc !important;
+    }
+
+    a {
+        color: inherit !important;
+        text-decoration: none !important;
+    }
+
+    /* Evitar cortar secciones */
+    .campana-seccion {
+        page-break-inside: avoid;
+    }
+}

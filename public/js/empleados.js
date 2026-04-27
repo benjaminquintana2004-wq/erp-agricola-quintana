@@ -172,7 +172,7 @@ function editarEmpleado(id) {
 }
 
 function abrirModalEmpleado(titulo, datos) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="campo-grupo">
@@ -211,7 +211,7 @@ function abrirModalEmpleado(titulo, datos) {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha de ingreso</label>
-                <input type="date" id="campo-fecha-ingreso" class="campo-input" value="${datos.fecha_ingreso || hoy}">
+                <input type="text" data-fecha id="campo-fecha-ingreso" class="campo-input" value="${isoADDMM(datos.fecha_ingreso || hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Jornal diario ($)</label>
@@ -249,7 +249,7 @@ async function guardarEmpleado() {
         cuil: document.getElementById('campo-cuil')?.value.trim() || null,
         rol: document.getElementById('campo-rol')?.value || null,
         telefono: document.getElementById('campo-telefono')?.value.trim() || null,
-        fecha_ingreso: document.getElementById('campo-fecha-ingreso')?.value || null,
+        fecha_ingreso: ddmmAISO(document.getElementById('campo-fecha-ingreso')?.value),
         jornal_diario: parseFloat(document.getElementById('campo-jornal')?.value) || null
     };
 
@@ -370,13 +370,13 @@ function abrirModalJornada(titulo, datos) {
         `<option value="${l.id}" ${datos.lote_id === l.id ? 'selected' : ''}>${l.nombre}${l.campo ? ' — ' + l.campo : ''}</option>`
     ).join('');
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-fecha" class="campo-input" value="${datos.fecha || hoy}">
+                <input type="text" data-fecha id="campo-fecha" class="campo-input" value="${isoADDMM(datos.fecha || hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Empleado <span class="campo-requerido">*</span></label>
@@ -430,7 +430,7 @@ function abrirModalJornada(titulo, datos) {
 }
 
 async function guardarJornada() {
-    const fecha = document.getElementById('campo-fecha')?.value;
+    const fecha = ddmmAISO(document.getElementById('campo-fecha')?.value);
     const empleado_id = document.getElementById('campo-empleado')?.value;
     const horas = document.getElementById('campo-horas')?.value;
 

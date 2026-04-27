@@ -21,6 +21,9 @@ let empresaActivaId     = null;   // empresa seleccionada
 let chequeEditandoId    = null;
 let prestamoEditandoId  = null;
 
+// Cheque cuyo detalle está abierto (para refrescar sección de facturas al modificar)
+let chequeDetalleActualId = null;
+
 // ==============================================
 // CARGAR DATOS
 // ==============================================
@@ -29,7 +32,7 @@ async function cargarTesoreria() {
     const [
         empData, cuentasData, catData, benData,
         contratistasData, empleadosData, arrendadoresData,
-        movData, prestData, cuotasData, saldosData
+        movData, prestData, cuotasData, saldosData, vincData
     ] = await Promise.all([
         ejecutarConsulta(db.from('empresas').select('*').order('nombre'), 'cargar empresas'),
         ejecutarConsulta(db.from('cuentas_bancarias').select('*, empresas(nombre)').order('alias'), 'cargar cuentas'),
@@ -37,17 +40,18 @@ async function cargarTesoreria() {
         ejecutarConsulta(db.from('beneficiarios').select('*, contratistas(nombre), empleados(nombre), arrendadores(nombre)').order('nombre'), 'cargar beneficiarios'),
         ejecutarConsulta(db.from('contratistas').select('id, nombre, especialidad').order('nombre'), 'cargar contratistas'),
         ejecutarConsulta(db.from('empleados').select('id, nombre, rol').eq('activo', true).order('nombre'), 'cargar empleados'),
-        ejecutarConsulta(db.from('arrendadores').select('id, nombre').order('nombre'), 'cargar arrendadores'),
+        ejecutarConsulta(db.from('arrendadores').select('id, nombre').eq('activo', true).order('nombre'), 'cargar arrendadores'),
         ejecutarConsulta(
             db.from('movimientos_tesoreria')
-                .select('*, empresas(nombre), cuentas_bancarias(alias, moneda), beneficiarios(nombre), categorias_gasto(nombre)')
+                .select('*, empresas(nombre), cuentas_bancarias(alias, moneda), beneficiarios(nombre, tipo), categorias_gasto(nombre), empleado_entrega:empleados!empleado_entrega_id(id, nombre)')
                 .order('fecha_balde', { ascending: false })
                 .order('fecha_cobro', { ascending: false }),
             'cargar movimientos'
         ),
         ejecutarConsulta(db.from('prestamos').select('*, empresas(nombre)').order('fecha_otorgamiento', { ascending: false }), 'cargar préstamos'),
         ejecutarConsulta(db.from('cuotas_prestamo').select('*').order('fecha_vencimiento'), 'cargar cuotas'),
-        ejecutarConsulta(db.from('saldos_bancarios').select('*, cuentas_bancarias(alias, moneda, empresa_id)').order('fecha', { ascending: false }), 'cargar saldos')
+        ejecutarConsulta(db.from('saldos_bancarios').select('*, cuentas_bancarias(alias, moneda, empresa_id)').order('fecha', { ascending: false }), 'cargar saldos'),
+        ejecutarConsulta(db.from('cheques_facturas').select('cheque_id, facturas(*)'), 'cargar vinculaciones cheque-factura')
     ]);
 
     empresas              = empData          || [];
@@ -61,6 +65,40 @@ async function cargarTesoreria() {
     prestamos             = prestData        || [];
     cuotas                = cuotasData       || [];
     saldosBancarios       = saldosData       || [];
+
+    // ── Adjuntar facturas vinculadas a cada cheque (N:N) ──
+    const vincs = vincData || [];
+    const facturasPorCheque = {};     // cheque_id -> [factura, ...]
+    const chequesIdsPorFactura = {};  // factura_id -> [cheque_id, ...]
+    vincs.forEach(v => {
+        if (!v.facturas) return;
+        (facturasPorCheque[v.cheque_id] ||= []).push(v.facturas);
+        (chequesIdsPorFactura[v.facturas.id] ||= []).push(v.cheque_id);
+    });
+
+    // Primero asignamos facturas_vinculadas; luego calculamos totales cruzados
+    movimientosTesoreria.forEach(m => {
+        m.facturas_vinculadas = facturasPorCheque[m.id] || [];
+    });
+
+    // Para cada factura vinculada a un cheque, guardar la lista de cheques
+    // que la cubren y la suma de sus montos. Así el aviso de inconsistencia
+    // puede comparar factura.monto_total vs sum(cheques que la cubren).
+    movimientosTesoreria.forEach(m => {
+        m.facturas_vinculadas.forEach(f => {
+            const ids = chequesIdsPorFactura[f.id] || [];
+            f._cheques_ids = ids;
+            f._total_cheques = ids.reduce((s, cid) => {
+                const ch = movimientosTesoreria.find(mm => mm.id === cid);
+                return s + Number(ch?.monto || 0);
+            }, 0);
+        });
+    });
+
+    // ── Promoción FUTURO → PENDIENTE y degradación PENDIENTE → FUTURO ──
+    // Aseguran que el estado refleja siempre la fecha de cobro al cargar.
+    await promoverFuturosAPendientes();
+    await degradarPendientesAFuturos();
 
     poblarSelectEmpresa();
     poblarSelectCuentasConciliacion();
@@ -151,146 +189,330 @@ function renderizarSaldoBanco() {
     }
 }
 
+// ── Helpers compartidos (cards + timeline) ─────────────────────
+
+/**
+ * Pasa a "pendiente" cualquier movimiento en "futuro" cuya fecha_cobro
+ * ya llegó. Se ejecuta al cargar la tesorería.
+ */
+async function promoverFuturosAPendientes() {
+    const hoyStr = fechaHoyStr();
+    const aPromover = movimientosTesoreria.filter(m =>
+        m.estado === 'futuro' && (m.fecha_cobro || '') <= hoyStr
+    );
+    if (aPromover.length === 0) return;
+
+    const ids = aPromover.map(m => m.id);
+    await ejecutarConsulta(
+        db.from('movimientos_tesoreria').update({ estado: 'pendiente' }).in('id', ids),
+        'promover futuros a pendientes'
+    );
+    // Reflejar el cambio en memoria para no tener que recargar
+    aPromover.forEach(m => { m.estado = 'pendiente'; });
+}
+
+/**
+ * Pasa a "futuro" cualquier movimiento en "pendiente" cuya fecha_cobro
+ * todavía no llegó. Corrige datos importados o cargados con estado
+ * incorrecto (por ejemplo, la sync desde Google Sheets que marca todo
+ * como "pendiente" sin mirar la fecha).
+ *
+ * Se ejecuta al cargar la tesorería, después de la promoción.
+ */
+async function degradarPendientesAFuturos() {
+    const hoyStr = fechaHoyStr();
+    const aDegradar = movimientosTesoreria.filter(m =>
+        m.estado === 'pendiente' && m.fecha_cobro && m.fecha_cobro > hoyStr
+    );
+    if (aDegradar.length === 0) return;
+
+    const ids = aDegradar.map(m => m.id);
+    await ejecutarConsulta(
+        db.from('movimientos_tesoreria').update({ estado: 'futuro' }).in('id', ids),
+        'degradar pendientes a futuros'
+    );
+    // Reflejar el cambio en memoria para no tener que recargar
+    aDegradar.forEach(m => { m.estado = 'futuro'; });
+}
+
+// fechaHoyStr() ahora vive en ui.js (global), para reutilizarlo en toda la app.
+
+/**
+ * Calcula el saldo disponible hoy y devuelve las listas auxiliares
+ * que usan renderizarCards() y renderizarTimeline().
+ *
+ *   saldo_disponible_hoy = saldo_banco
+ *                          - cheques/transferencias con fecha_cobro <= hoy y pendientes
+ *                          - cuotas con fecha_vencimiento <= hoy y pendientes
+ *
+ * Los pagos futuros NO restan del saldo disponible — entran en los baldes.
+ */
+function calcularSaldoDisponibleHoy() {
+    const hoyStr = fechaHoyStr();
+
+    // Saldo banco ARS de esta empresa
+    const cuentasEmpresa = cuentas.filter(c => c.empresa_id === empresaActivaId && c.moneda === 'ARS');
+    const idsCuentas     = cuentasEmpresa.map(c => c.id);
+    const saldoObj       = saldosBancarios.find(s => idsCuentas.includes(s.cuenta_bancaria_id));
+    const saldoBanco     = saldoObj ? Number(saldoObj.saldo) : null;
+
+    // Movimientos y cuotas pendientes de esta empresa (incluye FUTURO + PENDIENTE)
+    const pendientes = movimientosTesoreria.filter(m =>
+        m.empresa_id === empresaActivaId &&
+        (m.estado === 'pendiente' || m.estado === 'futuro')
+    );
+    const prestamosEmpresa = prestamos.filter(p => p.empresa_id === empresaActivaId && p.estado === 'vigente');
+    const idsPrestamos     = prestamosEmpresa.map(p => p.id);
+    const cuotasPend       = cuotas.filter(c =>
+        idsPrestamos.includes(c.prestamo_id) && c.estado === 'pendiente' && c.moneda === 'ARS'
+    );
+
+    // Exigible hoy: ya vencido y sin debitar
+    const exigibleMovs   = pendientes.filter(m => (m.fecha_cobro || '')       <= hoyStr);
+    const exigibleCuotas = cuotasPend.filter(c => (c.fecha_vencimiento || '') <= hoyStr);
+    const totalExigible  =
+        exigibleMovs.reduce((s, m)   => s + Number(m.monto), 0) +
+        exigibleCuotas.reduce((s, c) => s + Number(c.monto_total), 0);
+
+    const saldoDisponible = saldoBanco !== null ? saldoBanco - totalExigible : null;
+
+    // Futuros: los que van a aparecer en los baldes (para no doble-contar)
+    const pendientesFuturos = pendientes.filter(m => (m.fecha_cobro || '')       > hoyStr);
+    const cuotasFuturas     = cuotasPend.filter(c => (c.fecha_vencimiento || '') > hoyStr);
+
+    return {
+        saldoBanco, totalExigible, saldoDisponible,
+        pendientes, cuotasPend,
+        pendientesFuturos, cuotasFuturas
+    };
+}
+
 function renderizarCards() {
     const container = document.getElementById('tesoreria-cards');
     if (!container) return;
 
-    const pendientes = movimientosTesoreria.filter(m =>
-        m.empresa_id === empresaActivaId && m.estado === 'pendiente'
-    );
+    const {
+        saldoBanco, totalExigible, saldoDisponible,
+        pendientes, cuotasPend
+    } = calcularSaldoDisponibleHoy();
 
-    const totalCheques       = pendientes.filter(m => m.tipo === 'cheque').reduce((s, m) => s + Number(m.monto), 0);
-    const totalTransferencias = pendientes.filter(m => m.tipo === 'transferencia').reduce((s, m) => s + Number(m.monto), 0);
-    const totalPendiente     = totalCheques + totalTransferencias;
+    const chequesPend  = pendientes.filter(m => m.tipo === 'cheque');
+    const transfPend   = pendientes.filter(m => m.tipo === 'transferencia');
+    const totalCheques = chequesPend.reduce((s, m) => s + Number(m.monto), 0);
+    const totalTransf  = transfPend.reduce((s, m)  => s + Number(m.monto), 0);
+    const totalCuotas  = cuotasPend.reduce((s, c)  => s + Number(c.monto_total), 0);
 
-    // Cuotas ARS pendientes de esta empresa
-    const prestamosEmpresa = prestamos.filter(p => p.empresa_id === empresaActivaId && p.estado === 'vigente');
-    const idsPrestamos     = prestamosEmpresa.map(p => p.id);
-    const cuotasPendientes  = cuotas.filter(c => idsPrestamos.includes(c.prestamo_id) && c.estado === 'pendiente' && c.moneda === 'ARS');
-    const totalCuotasARS   = cuotasPendientes.reduce((s, c) => s + Number(c.monto_total), 0);
-
-    const totalEgresos = totalPendiente + totalCuotasARS;
-
-    // Saldo real = saldo banco - todos los egresos pendientes ARS
-    const cuentasEmpresa = cuentas.filter(c => c.empresa_id === empresaActivaId && c.moneda === 'ARS');
-    const idsCuentas = cuentasEmpresa.map(c => c.id);
-    const saldo = saldosBancarios.find(s => idsCuentas.includes(s.cuenta_bancaria_id));
-    const saldoBanco = saldo ? Number(saldo.saldo) : null;
-    const saldoReal  = saldoBanco !== null ? saldoBanco - totalEgresos : null;
-
-    const claseSaldoReal = saldoReal === null ? '' :
-                           saldoReal >= 0      ? 'positivo' : 'negativo';
+    const claseSaldo = saldoDisponible === null ? '' :
+                       saldoDisponible >  0      ? 'positivo' : 'negativo';
 
     container.innerHTML = `
-        <div class="tesoreria-card card-saldo-real">
-            <div class="tesoreria-card-label">Saldo real (ARS)</div>
-            <div class="tesoreria-card-valor ${claseSaldoReal}">
-                ${saldoReal !== null ? '$ ' + formatearNumero(saldoReal) : '—'}
+        <div class="tesoreria-card">
+            <div class="tesoreria-card-label">Saldo banco</div>
+            <div class="tesoreria-card-valor">
+                ${saldoBanco !== null ? '$ ' + formatearNumero(saldoBanco) : '—'}
             </div>
-            <div class="tesoreria-card-sub">Saldo banco menos todos los egresos pendientes</div>
+            <div class="tesoreria-card-sub">Último saldo ingresado</div>
         </div>
+
+        <div class="tesoreria-card card-exigible">
+            <div class="tesoreria-card-label">Exigible hoy pendiente</div>
+            <div class="tesoreria-card-valor ${totalExigible > 0 ? 'advertencia' : ''}">
+                $ ${formatearNumero(totalExigible)}
+            </div>
+            <div class="tesoreria-card-sub">Vencido sin debitar</div>
+        </div>
+
+        <div class="tesoreria-card card-saldo-real">
+            <div class="tesoreria-card-label">Saldo disponible hoy</div>
+            <div class="tesoreria-card-valor ${claseSaldo}">
+                ${saldoDisponible !== null ? '$ ' + formatearNumero(saldoDisponible) : '—'}
+            </div>
+            <div class="tesoreria-card-sub">Banco menos lo ya vencido</div>
+        </div>
+
         <div class="tesoreria-card">
             <div class="tesoreria-card-label">Cheques pendientes</div>
             <div class="tesoreria-card-valor advertencia">$ ${formatearNumero(totalCheques)}</div>
-            <div class="tesoreria-card-sub">${pendientes.filter(m => m.tipo === 'cheque').length} cheque${pendientes.filter(m => m.tipo === 'cheque').length !== 1 ? 's' : ''}</div>
+            <div class="tesoreria-card-sub">${chequesPend.length} cheque${chequesPend.length !== 1 ? 's' : ''}</div>
         </div>
+
         <div class="tesoreria-card">
             <div class="tesoreria-card-label">Transferencias pendientes</div>
-            <div class="tesoreria-card-valor advertencia">$ ${formatearNumero(totalTransferencias)}</div>
-            <div class="tesoreria-card-sub">${pendientes.filter(m => m.tipo === 'transferencia').length} a arrendadores</div>
+            <div class="tesoreria-card-valor advertencia">$ ${formatearNumero(totalTransf)}</div>
+            <div class="tesoreria-card-sub">${transfPend.length} transf.</div>
         </div>
+
         <div class="tesoreria-card">
             <div class="tesoreria-card-label">Cuotas pendientes (ARS)</div>
-            <div class="tesoreria-card-valor advertencia">$ ${formatearNumero(totalCuotasARS)}</div>
-            <div class="tesoreria-card-sub">${cuotasPendientes.length} cuota${cuotasPendientes.length !== 1 ? 's' : ''} de préstamos</div>
+            <div class="tesoreria-card-valor advertencia">$ ${formatearNumero(totalCuotas)}</div>
+            <div class="tesoreria-card-sub">${cuotasPend.length} cuota${cuotasPend.length !== 1 ? 's' : ''}</div>
+        </div>
+
+        ${renderizarCardFacturasFaltantes()}
+    `;
+}
+
+/**
+ * Card del dashboard: cheques que deberían tener factura y no la tienen.
+ * Considera todos los cheques no anulados de contratistas/otros sin ninguna factura vinculada.
+ * Click en la card → va a movimientos con filtro "falta factura" aplicado.
+ */
+function renderizarCardFacturasFaltantes() {
+    const chequesSinFactura = movimientosTesoreria.filter(m =>
+        m.empresa_id === empresaActivaId &&
+        m.estado !== 'anulado' &&
+        estadoFacturaMovimiento(m) === 'falta'
+    );
+    const cantidad = chequesSinFactura.length;
+    const monto    = chequesSinFactura.reduce((s, m) => s + Number(m.monto), 0);
+
+    const claseValor = cantidad === 0 ? 'positivo' : 'advertencia';
+    const subtitulo  = cantidad === 0
+        ? 'Todos los cheques tienen su factura'
+        : `${cantidad} cheque${cantidad !== 1 ? 's' : ''} · $ ${formatearNumero(monto)}`;
+
+    return `
+        <div class="tesoreria-card" style="cursor:pointer;" onclick="verChequesSinFactura()" title="Ver cheques sin factura">
+            <div class="tesoreria-card-label">Cheques sin factura</div>
+            <div class="tesoreria-card-valor ${claseValor}">${cantidad}</div>
+            <div class="tesoreria-card-sub">${subtitulo}</div>
         </div>
     `;
+}
+
+/**
+ * Cambia al tab "Movimientos" con el filtro "falta factura" aplicado.
+ */
+function verChequesSinFactura() {
+    cambiarTabTesoreria('movimientos');
+    // Pequeño delay para que el tab esté montado antes de setear el filtro
+    setTimeout(() => {
+        const filtroFact = document.getElementById('filtro-factura');
+        if (filtroFact) {
+            filtroFact.value = 'falta';
+            renderizarMovimientos();
+        }
+    }, 50);
 }
 
 function renderizarTimeline() {
     const container = document.getElementById('timeline-baldes');
     if (!container) return;
 
-    // Generar los próximos 10 baldes desde hoy
-    // Usamos componentes locales para evitar desfase UTC (Argentina = UTC-3)
-    const hoyLocal = new Date();
-    const hoyStr2  = `${hoyLocal.getFullYear()}-${String(hoyLocal.getMonth()+1).padStart(2,'0')}-${String(hoyLocal.getDate()).padStart(2,'0')}`;
-    const baldes   = [];
+    const hoyStr = fechaHoyStr();
+    const {
+        saldoDisponible, pendientesFuturos, cuotasFuturas, totalExigible
+    } = calcularSaldoDisponibleHoy();
 
-    // Primer balde = balde del día de hoy
-    let baldeActual = calcularFechaBaldeJS(hoyStr2);
+    // Generar los próximos 10 baldes desde hoy (paso de 5 días)
+    const baldes    = [];
+    let baldeActual = calcularFechaBaldeJS(hoyStr);
+    const baldeHoy  = baldeActual;
 
-    // Generar 10 baldes hacia adelante (de a 5 días)
     for (let i = 0; i < 10; i++) {
         baldes.push(baldeActual);
-        // Avanzar 5 días usando T12:00:00 para no caer en el borde UTC
         const next = new Date(baldeActual + 'T12:00:00');
         next.setDate(next.getDate() + 5);
         baldeActual = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
     }
 
-    // Egresos pendientes de esta empresa
-    const pendientes = movimientosTesoreria.filter(m =>
-        m.empresa_id === empresaActivaId && m.estado === 'pendiente'
-    );
-    const prestamosEmpresa = prestamos.filter(p => p.empresa_id === empresaActivaId && p.estado === 'vigente');
-    const idsPrestamos = prestamosEmpresa.map(p => p.id);
-    const cuotasPend = cuotas.filter(c => idsPrestamos.includes(c.prestamo_id) && c.estado === 'pendiente' && c.moneda === 'ARS');
-
-    // Calcular saldo banco
-    const cuentasEmpresa = cuentas.filter(c => c.empresa_id === empresaActivaId && c.moneda === 'ARS');
-    const idsCuentas = cuentasEmpresa.map(c => c.id);
-    const saldoObj = saldosBancarios.find(s => idsCuentas.includes(s.cuenta_bancaria_id));
-    const saldoBanco = saldoObj ? Number(saldoObj.saldo) : null;
-
-    // Monto máximo para escalar barras
-    let saldoAcumulado = saldoBanco;
-    const montoMax = Math.max(
-        ...baldes.map(b => {
-            const mov = pendientes.filter(m => m.fecha_balde === b);
-            const cuo = cuotasPend.filter(c => c.fecha_balde === b);
-            return mov.reduce((s, m) => s + Number(m.monto), 0) +
-                   cuo.reduce((s, c) => s + Number(c.monto_total), 0);
-        }),
-        1
-    );
-
-    const baldeHoy = calcularFechaBaldeJS(hoyStr2);
+    // Proyección acumulada — parte del saldo disponible hoy
+    // (lo ya vencido NO se descuenta acá porque ya está dentro de saldoDisponible)
+    let saldoProyectado = saldoDisponible;
 
     container.innerHTML = baldes.map(balde => {
-        const movBalde   = pendientes.filter(m => m.fecha_balde === balde);
-        const cuoBalde   = cuotasPend.filter(c => c.fecha_balde === balde);
-        const totalBalde = movBalde.reduce((s, m) => s + Number(m.monto), 0) +
-                           cuoBalde.reduce((s, c) => s + Number(c.monto_total), 0);
+        const esBaldeHoy = balde === baldeHoy;
 
-        const cantCheques = movBalde.filter(m => m.tipo === 'cheque').length;
-        const cantTransf  = movBalde.filter(m => m.tipo === 'transferencia').length;
-        const cantCuotas  = cuoBalde.length;
+        // Movimientos/cuotas del balde — solo futuros para no doble-contar
+        const movBalde = pendientesFuturos.filter(m => m.fecha_balde === balde);
+        const cuoBalde = cuotasFuturas.filter(c    => c.fecha_balde  === balde);
 
-        const porcentaje = Math.min((totalBalde / montoMax) * 100, 100);
-        const esBaldehoy = balde === baldeHoy;
+        const chequesBalde = movBalde.filter(m => m.tipo === 'cheque');
+        const transfBalde  = movBalde.filter(m => m.tipo === 'transferencia');
 
-        // Descuento acumulado para saber si hay faltante
-        if (saldoAcumulado !== null) saldoAcumulado -= totalBalde;
-        const hayFaltante = saldoAcumulado !== null && saldoAcumulado < 0;
+        const montoCheques = chequesBalde.reduce((s, m) => s + Number(m.monto), 0);
+        const montoTransf  = transfBalde.reduce((s, m)  => s + Number(m.monto), 0);
+        const montoCuotas  = cuoBalde.reduce((s, c)     => s + Number(c.monto_total), 0);
+        const totalBalde   = montoCheques + montoTransf + montoCuotas;
+
+        // Saldo antes y después del balde
+        const saldoAntes   = saldoProyectado;
+        const saldoDespues = saldoProyectado !== null ? saldoProyectado - totalBalde : null;
+        if (saldoProyectado !== null) saldoProyectado -= totalBalde;
+
+        // Semáforo (solo si hay movimientos en el balde)
+        let claseSemaforo = '';
+        if (saldoDespues !== null && totalBalde > 0) {
+            if      (saldoDespues < 0)                   claseSemaforo = 'balde-rojo';
+            else if (saldoDespues < totalBalde * 0.2)    claseSemaforo = 'balde-amarillo';
+            else                                          claseSemaforo = 'balde-verde';
+        }
+
+        // Caso especial: balde de hoy vacío de futuros pero con exigible vencido pendiente.
+        // En ese caso, el texto "Sin vencimientos" es engañoso — avisamos y resaltamos el borde.
+        const muestraExigibleHoy = esBaldeHoy && totalBalde === 0 && totalExigible > 0;
+        const textoTotalBalde = totalBalde > 0
+            ? '$ ' + formatearNumero(totalBalde)
+            : (muestraExigibleHoy ? 'Sin pendientes futuros' : 'Sin vencimientos');
+        if (muestraExigibleHoy) claseSemaforo = 'balde-alerta-vencido';
+
+        const saldoAntesFmt   = saldoAntes   !== null ? '$ ' + formatearNumero(saldoAntes)   : '—';
+        const saldoDespuesFmt = saldoDespues !== null ? '$ ' + formatearNumero(saldoDespues) : '—';
 
         return `
-        <div class="balde-item ${esBaldehoy ? 'balde-hoy' : ''} ${hayFaltante && totalBalde > 0 ? 'balde-faltante' : ''}">
+        <div class="balde-item ${esBaldeHoy ? 'balde-hoy' : ''} ${claseSemaforo}">
             <div class="balde-fecha">
                 ${formatearFechaCorta(balde)}
-                ${esBaldehoy ? '<span class="balde-fecha-hoy-label">← hoy</span>' : ''}
+                ${esBaldeHoy ? '<span class="balde-fecha-hoy-label">← hoy</span>' : ''}
             </div>
-            <div class="balde-barra-wrap">
-                <div class="balde-barra" style="width:${totalBalde > 0 ? porcentaje : 0}%"></div>
+
+            <div class="balde-desglose-detalle">
+                <div class="balde-linea">
+                    <span class="balde-linea-tipo">✓ Cheques</span>
+                    <span class="balde-linea-cant">${chequesBalde.length}</span>
+                    <span class="balde-linea-monto ${montoCheques > 0 ? '' : 'tenue'}">
+                        ${montoCheques > 0 ? '$ ' + formatearNumero(montoCheques) : '$ 0'}
+                    </span>
+                </div>
+                <div class="balde-linea">
+                    <span class="balde-linea-tipo">→ Transferencias</span>
+                    <span class="balde-linea-cant">${transfBalde.length}</span>
+                    <span class="balde-linea-monto ${montoTransf > 0 ? '' : 'tenue'}">
+                        ${montoTransf > 0 ? '$ ' + formatearNumero(montoTransf) : '$ 0'}
+                    </span>
+                </div>
+                <div class="balde-linea">
+                    <span class="balde-linea-tipo">🏦 Cuotas</span>
+                    <span class="balde-linea-cant">${cuoBalde.length}</span>
+                    <span class="balde-linea-monto ${montoCuotas > 0 ? '' : 'tenue'}">
+                        ${montoCuotas > 0 ? '$ ' + formatearNumero(montoCuotas) : '$ 0'}
+                    </span>
+                </div>
             </div>
-            <div class="balde-desglose">
-                ${cantCheques > 0    ? `<span>✓ ${cantCheques} cheque${cantCheques > 1 ? 's' : ''}</span>` : ''}
-                ${cantTransf > 0     ? `<span>→ ${cantTransf} transf.</span>` : ''}
-                ${cantCuotas > 0     ? `<span>🏦 ${cantCuotas} cuota${cantCuotas > 1 ? 's' : ''}</span>` : ''}
-                ${totalBalde === 0   ? `<span style="color:var(--color-texto-tenue);">Sin vencimientos</span>` : ''}
-            </div>
-            <div class="balde-monto">
-                ${totalBalde > 0 ? '$ ' + formatearNumero(totalBalde) : '—'}
+
+            <div class="balde-separador"></div>
+
+            <div class="balde-proyeccion">
+                <div class="balde-total-balde">
+                    <span>Total balde</span>
+                    <strong>${textoTotalBalde}</strong>
+                </div>
+                ${muestraExigibleHoy ? `
+                <div class="balde-aviso-exigible">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <span>Hay <strong>$ ${formatearNumero(totalExigible)}</strong> exigibles hoy ya vencidos — ver KPI arriba</span>
+                </div>
+                ` : ''}
+                ${saldoAntes !== null && totalBalde > 0 ? `
+                <div class="balde-saldo-linea">
+                    <span>Saldo antes</span>
+                    <span>${saldoAntesFmt}</span>
+                </div>
+                <div class="balde-saldo-linea balde-saldo-despues ${claseSemaforo}">
+                    <span>Saldo después</span>
+                    <strong>${saldoDespuesFmt}</strong>
+                </div>
+                ` : ''}
             </div>
         </div>
         `;
@@ -300,6 +522,55 @@ function renderizarTimeline() {
 // ==============================================
 // MOVIMIENTOS — Renderizar agrupado por balde
 // ==============================================
+
+function badgeTipoBen(tipo) {
+    if (!tipo) return '—';
+    const map = {
+        contratista: { label: 'Contratista', color: '#4a9e6e' },
+        empleado:    { label: 'Empleado',    color: '#5a8fc2' },
+        arrendador:  { label: 'Arrendador',  color: '#c9a84c' },
+        otro:        { label: 'Otro',         color: '#6b6760' },
+    };
+    const cfg = map[tipo] || { label: tipo, color: '#6b6760' };
+    return `<span style="
+        display:inline-block;
+        padding:2px 8px;
+        border-radius:var(--radio-completo);
+        font-size:var(--texto-xs);
+        font-weight:600;
+        background:${cfg.color}22;
+        color:${cfg.color};
+        text-transform:uppercase;
+        letter-spacing:0.03em;
+    ">${cfg.label}</span>`;
+}
+
+/**
+ * Decide si un movimiento debería tener factura adjunta.
+ * @returns 'ok' | 'falta' | 'na'   — ok = tiene, falta = no tiene pero debería, na = no aplica
+ */
+function estadoFacturaMovimiento(m) {
+    // Solo cheques reciben factura de proveedor; transferencias automáticas no aplican
+    if (m.tipo !== 'cheque') return 'na';
+    const tipoBen = m.beneficiarios?.tipo;
+    // Empleados no emiten factura; arrendadores se manejan en el módulo de arrendamientos
+    if (tipoBen === 'empleado' || tipoBen === 'arrendador') return 'na';
+    return (m.facturas_vinculadas && m.facturas_vinculadas.length > 0) ? 'ok' : 'falta';
+}
+
+function badgeFactura(estado) {
+    if (estado === 'ok') {
+        return `<span title="Factura adjunta" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(74,158,110,0.15);color:var(--color-verde);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><polyline points="20 6 9 17 4 12"/></svg>
+        </span>`;
+    }
+    if (estado === 'falta') {
+        return `<span title="Falta factura" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(201,76,76,0.15);color:var(--color-error);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </span>`;
+    }
+    return `<span title="No aplica" style="color:var(--color-texto-tenue);">—</span>`;
+}
 
 function renderizarMovimientos() {
     const container   = document.getElementById('lista-movimientos');
@@ -311,16 +582,23 @@ function renderizarMovimientos() {
     // Aplicar filtros
     const filtroEstado    = document.getElementById('filtro-estado')?.value    || '';
     const filtroTipo      = document.getElementById('filtro-tipo')?.value      || '';
-    const filtroDesde     = document.getElementById('filtro-desde')?.value     || '';
-    const filtroHasta     = document.getElementById('filtro-hasta')?.value     || '';
+    const filtroDesde     = ddmmAISO(document.getElementById('filtro-desde')?.value)     || '';
+    const filtroHasta     = ddmmAISO(document.getElementById('filtro-hasta')?.value)     || '';
+    const filtroFactura   = document.getElementById('filtro-factura')?.value   || '';
     const filtroBusqueda  = document.getElementById('filtro-busqueda')?.value.toLowerCase().trim() || '';
 
     let filtrados = movimientosTesoreria.filter(m => {
         if (m.empresa_id !== empresaActivaId) return false;
+        // Ocultar anulados salvo que el usuario los pida explícitamente
+        // eligiendo "Anulado" en el filtro de Estado.
+        if (m.estado === 'anulado' && filtroEstado !== 'anulado') return false;
         if (filtroEstado && m.estado !== filtroEstado) return false;
         if (filtroTipo   && m.tipo   !== filtroTipo)   return false;
         if (filtroDesde  && m.fecha_cobro < filtroDesde) return false;
         if (filtroHasta  && m.fecha_cobro > filtroHasta) return false;
+        if (filtroFactura) {
+            if (estadoFacturaMovimiento(m) !== filtroFactura) return false;
+        }
         if (filtroBusqueda) {
             const benNombre = m.beneficiarios?.nombre?.toLowerCase() || '';
             const nroCheque = m.numero_cheque?.toLowerCase() || '';
@@ -340,91 +618,102 @@ function renderizarMovimientos() {
         return;
     }
 
-    // Agrupar por fecha_balde
-    const grupos = {};
-    filtrados.forEach(m => {
-        const k = m.fecha_balde;
-        if (!grupos[k]) grupos[k] = [];
-        grupos[k].push(m);
+    // Ordenar por fecha_cobro ascendente (más cercana a hoy primero)
+    const hoyStr = (() => {
+        const h = new Date();
+        return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`;
+    })();
+
+    filtrados.sort((a, b) => {
+        const da = a.fecha_cobro || '';
+        const db2 = b.fecha_cobro || '';
+        // Primero las fechas >= hoy (pendientes), luego las pasadas
+        const aFutura = da >= hoyStr;
+        const bFutura = db2 >= hoyStr;
+        if (aFutura && !bFutura) return -1;
+        if (!aFutura && bFutura) return 1;
+        return da.localeCompare(db2);
     });
 
-    // Ordenar baldes de más reciente a más antiguo
-    const baldesOrdenados = Object.keys(grupos).sort((a, b) => b.localeCompare(a));
+    const filas = filtrados.map(m => {
+        const badgeTipo = m.tipo === 'cheque'
+            ? `<span class="badge badge-cheque">Cheque</span>`
+            : `<span class="badge badge-transferencia">Transf.</span>`;
+        const badgeEstado =
+            m.estado === 'futuro'    ? `<span class="badge badge-futuro">Futuro</span>` :
+            m.estado === 'pendiente' ? `<span class="badge badge-pendiente-pago">Pendiente</span>` :
+            m.estado === 'cobrado'   ? `<span class="badge badge-cobrado">Cobrado</span>` :
+                                       `<span class="badge badge-anulado">Anulado</span>`;
 
-    container.innerHTML = baldesOrdenados.map(balde => {
-        const movs       = grupos[balde];
-        const totalBalde = movs.reduce((s, m) => s + Number(m.monto), 0);
-
-        const filas = movs.map(m => {
-            const badgeTipo  = m.tipo === 'cheque'
-                ? `<span class="badge badge-cheque">Cheque</span>`
-                : `<span class="badge badge-transferencia">Transferencia</span>`;
-            const badgeEstado = m.estado === 'pendiente'
-                ? `<span class="badge badge-pendiente-pago">Pendiente</span>`
-                : m.estado === 'cobrado'
-                    ? `<span class="badge badge-cobrado">Cobrado</span>`
-                    : `<span class="badge badge-anulado">Anulado</span>`;
-
-            return `
-            <tr>
-                <td>${formatearFecha(m.fecha_cobro)}</td>
-                <td>${badgeTipo}</td>
-                <td>${m.numero_cheque ? `<span style="font-family:var(--fuente-mono);font-size:var(--texto-sm);">${m.numero_cheque}</span>` : '—'}</td>
-                <td><strong>${m.beneficiarios?.nombre || '—'}</strong></td>
-                <td>${m.categorias_gasto?.nombre || '—'}</td>
-                <td style="font-weight:600;font-family:var(--fuente-mono);">$ ${formatearNumero(m.monto)}</td>
-                <td>${badgeEstado}</td>
-                <td>
-                    <div class="tabla-acciones">
-                        ${puedeEditar && m.estado === 'pendiente' ? `
-                            <button class="tabla-btn" style="color:var(--color-verde);" onclick="marcarCobrado('${m.id}')" title="Marcar como cobrado">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polyline points="20 6 9 17 4 12"/></svg>
-                            </button>
-                        ` : ''}
-                        ${puedeEditar ? `
-                            <button class="tabla-btn" onclick="editarMovimiento('${m.id}')" title="Editar">${ICONOS.editar}</button>
-                            ${m.estado !== 'anulado' ? `<button class="tabla-btn btn-eliminar" onclick="confirmarAnularMovimiento('${m.id}')" title="Anular">${ICONOS.eliminar}</button>` : ''}
-                        ` : ''}
-                    </div>
-                </td>
-            </tr>
-            `;
-        }).join('');
+        const estadoFact = estadoFacturaMovimiento(m);
 
         return `
-        <div class="grupo-balde">
-            <div class="grupo-balde-header">
-                <span class="grupo-balde-fecha">Balde ${formatearFecha(balde)}</span>
-                <span class="grupo-balde-total">${movs.length} movimiento${movs.length !== 1 ? 's' : ''} — <strong>$ ${formatearNumero(totalBalde)}</strong></span>
-            </div>
-            <div class="tabla-contenedor" style="overflow-x:auto;">
-                <table class="tabla" style="min-width:900px;">
-                    <thead>
-                        <tr>
-                            <th>Fecha cobro</th>
-                            <th>Tipo</th>
-                            <th>Nro. cheque</th>
-                            <th>Beneficiario</th>
-                            <th>Categoría</th>
-                            <th>Monto</th>
-                            <th>Estado</th>
-                            <th style="width:100px;">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>${filas}</tbody>
-                </table>
-            </div>
-        </div>
+        <tr>
+            <td style="white-space:nowrap;">${formatearFecha(m.fecha_cobro)}</td>
+            <td>${badgeTipo}</td>
+            <td style="font-family:var(--fuente-mono);">${m.numero_cheque || '—'}</td>
+            <td><strong>${m.beneficiarios?.nombre || '—'}</strong></td>
+            <td>${badgeTipoBen(m.beneficiarios?.tipo)}</td>
+            <td>${m.categorias_gasto?.nombre || '—'}</td>
+            <td style="font-weight:600;font-family:var(--fuente-mono);white-space:nowrap;">$ ${formatearNumero(m.monto)}</td>
+            <td>${badgeEstado}</td>
+            <td style="text-align:center;">${badgeFactura(estadoFact)}</td>
+            <td style="white-space:nowrap;">
+                <div class="tabla-acciones">
+                    <button class="tabla-btn" onclick="verDetalleCheque('${m.id}')" title="Ver detalle">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                    ${puedeEditar && (m.estado === 'pendiente' || m.estado === 'futuro') ? `
+                        <button class="tabla-btn" style="color:var(--color-verde);" onclick="marcarCobrado('${m.id}')" title="Marcar como cobrado">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                    ` : ''}
+                    ${puedeEditar && m.estado === 'cobrado' ? `
+                        <button class="tabla-btn" style="color:var(--color-alerta);" onclick="revertirAPendiente('${m.id}')" title="Revertir a pendiente">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                        </button>
+                    ` : ''}
+                    ${puedeEditar ? `
+                        <button class="tabla-btn" onclick="editarMovimiento('${m.id}')" title="Editar">${ICONOS.editar}</button>
+                        ${m.estado !== 'anulado' ? `<button class="tabla-btn btn-eliminar" onclick="confirmarAnularMovimiento('${m.id}')" title="Anular">${ICONOS.eliminar}</button>` : ''}
+                    ` : ''}
+                </div>
+            </td>
+        </tr>
         `;
     }).join('');
+
+    container.innerHTML = `
+        <div class="tabla-contenedor" style="overflow-x:auto;">
+            <table class="tabla" style="min-width:880px;">
+                <thead>
+                    <tr>
+                        <th style="width:95px;">F. Cobro</th>
+                        <th style="width:90px;">Tipo</th>
+                        <th style="width:110px;">Nro. Cheque</th>
+                        <th>Beneficiario</th>
+                        <th style="width:100px;">Tipo ben.</th>
+                        <th>Categoría</th>
+                        <th style="width:120px;">Monto</th>
+                        <th style="width:95px;">Estado</th>
+                        <th style="width:70px;text-align:center;">Factura</th>
+                        <th style="width:120px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>
+    `;
 }
 
 function limpiarFiltros() {
-    document.getElementById('filtro-estado').value    = 'pendiente';
+    document.getElementById('filtro-estado').value    = '';
     document.getElementById('filtro-tipo').value      = '';
     document.getElementById('filtro-desde').value     = '';
     document.getElementById('filtro-hasta').value     = '';
     document.getElementById('filtro-busqueda').value  = '';
+    const filtroFact = document.getElementById('filtro-factura');
+    if (filtroFact) filtroFact.value = '';
     renderizarMovimientos();
 }
 
@@ -489,15 +778,16 @@ function abrirModalCheque(datos = {}) {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha de emisión <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-fecha-emision" class="campo-input"
-                    value="${datos.fecha_emision || hoy}">
+                <input type="text" data-fecha id="campo-fecha-emision" class="campo-input"
+                    value="${isoADDMM(datos.fecha_emision || hoy)}"
+                    placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Fecha de cobro <span class="campo-requerido">*</span></label>
-                <input type="date" id="campo-fecha-cobro" class="campo-input"
-                    value="${datos.fecha_cobro || ''}"
-                    oninput="actualizarHintBalde(this.value)"
-                    onchange="actualizarHintBalde(this.value)">
+                <input type="text" data-fecha id="campo-fecha-cobro" class="campo-input"
+                    value="${isoADDMM(datos.fecha_cobro)}"
+                    placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10"
+                    oninput="actualizarHintBalde(ddmmAISO(this.value))">
                 <div class="balde-hint" id="hint-balde">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <span id="hint-balde-texto"></span>
@@ -543,6 +833,26 @@ function abrirModalCheque(datos = {}) {
                     </select>
                 </div>
             </div>
+            <!-- QQ que representa el cheque (solo para arrendadores) -->
+            <div id="ben-grupo-qq-arrendador" style="${tipoPresel !== 'arrendador' ? 'display:none' : ''}">
+                <div class="campos-fila">
+                    <div class="campo-grupo">
+                        <label class="campo-label">QQ que representa este pago <span class="campo-requerido">*</span></label>
+                        <input type="number" id="ben-arrendador-qq" class="campo-input"
+                            placeholder="Ej: 140" step="0.01" min="0.01">
+                        <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">
+                            Se descontará del saldo de quintales del arrendador en la campaña activa.
+                        </div>
+                    </div>
+                    <div class="campo-grupo">
+                        <label class="campo-label">Tipo</label>
+                        <select id="ben-arrendador-tipo" class="campo-select">
+                            <option value="blanco">Blanco (con factura)</option>
+                            <option value="negro">Negro (sin factura)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
             <!-- Otro: nombre + CUIT -->
             <div id="ben-grupo-otro" style="${tipoPresel !== 'otro' ? 'display:none' : ''}">
                 <div class="campos-fila">
@@ -582,6 +892,31 @@ function abrirModalCheque(datos = {}) {
                 value="${datos.notas || ''}"
                 placeholder="Observaciones opcionales">
         </div>
+
+        <div class="campo-grupo">
+            <label class="campo-label">Entregado por</label>
+            <select id="campo-empleado-entrega" class="campo-select">
+                <option value="">— Sin especificar —</option>
+                ${empleadosTesoreria.map(e => `<option value="${e.id}" ${datos.empleado_entrega_id === e.id ? 'selected' : ''}>${e.nombre}</option>`).join('')}
+            </select>
+            <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">Empleado que manejó o entregó el cheque (opcional).</div>
+        </div>
+
+        ${chequeEditandoId ? `
+            <hr class="form-separador">
+            <div class="form-seccion-titulo">Facturas</div>
+            <div id="bloque-facturas-edicion">
+                ${renderizarSeccionFacturasCheque(
+                    movimientosTesoreria.find(x => x.id === chequeEditandoId) || {},
+                    false
+                )}
+            </div>
+        ` : `
+            <div style="margin-top:var(--espacio-md);padding:var(--espacio-sm) var(--espacio-md);background:var(--color-fondo-secundario);border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:var(--color-texto-tenue);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Después de registrar el cheque vas a poder vincular o subir su factura acá mismo, sin cerrar el modal.
+            </div>
+        `}
     `;
 
     const footer = `
@@ -637,14 +972,763 @@ function obtenerFechasBalde(fechaStr) {
     anterior.setDate(dia - resto);
     const siguiente = new Date(anterior);
     siguiente.setDate(anterior.getDate() + 5);
-    return `${formatearFecha(anterior.toISOString().split('T')[0])} o ${formatearFecha(siguiente.toISOString().split('T')[0])}`;
+    return `${formatearFecha(fechaALocalStr(anterior))} o ${formatearFecha(fechaALocalStr(siguiente))}`;
+}
+
+// ==============================================
+// FACTURAS DE CHEQUES — Gemini (helper compartido)
+// ==============================================
+
+function archivoABase64Cheque(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+/**
+ * Llama a Gemini para extraer los datos de una factura de proveedor.
+ * Usa retry con backoff exponencial y fallback entre modelos.
+ * @param {string} apiKey
+ * @param {string} pdfBase64
+ * @param {string} mimeType — ej 'application/pdf' o 'image/png'
+ */
+async function llamarGeminiFacturaCheque(apiKey, pdfBase64, mimeType = 'application/pdf') {
+    const prompt = `Analizá esta factura argentina (factura ARCA/AFIP emitida por un proveedor o contratista) y extraé los datos en formato JSON estricto.
+
+Si un campo no aparece, poné null. No inventes datos.
+
+Formato de respuesta (solo JSON, sin markdown):
+{
+    "vendedor_nombre": "razón social del proveedor emisor",
+    "vendedor_cuit": "CUIT en formato XX-XXXXXXXX-X",
+    "numero_factura": "número completo, ej 00002-00000058",
+    "fecha": "YYYY-MM-DD de la factura",
+    "total": 0,
+    "moneda": "ARS o USD",
+    "cae": "número de CAE",
+    "cae_vencimiento": "YYYY-MM-DD"
+}`;
+
+    const modelos = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const codigosReintento = [429, 500, 502, 503, 504];
+
+    let ultimoError = null;
+
+    for (let m = 0; m < modelos.length; m++) {
+        const modelo = modelos[m];
+
+        for (let intento = 0; intento < 3; intento++) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                { inline_data: { mime_type: mimeType, data: pdfBase64 } }
+                            ]
+                        }],
+                        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 }
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    const err = new Error(errorData.error?.message || `Error HTTP ${response.status}`);
+                    err.status = response.status;
+                    throw err;
+                }
+
+                const result = await response.json();
+                const parts = result.candidates?.[0]?.content?.parts || [];
+                let texto = null;
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    if (parts[i].text) { texto = parts[i].text; break; }
+                }
+                if (!texto) throw new Error('Gemini no devolvió respuesta.');
+
+                let jsonStr = texto.trim();
+                if (jsonStr.startsWith('```')) {
+                    jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```\s*$/g, '').trim();
+                }
+                return JSON.parse(jsonStr);
+            } catch (err) {
+                ultimoError = err;
+                const reintentable = codigosReintento.includes(err.status);
+                if (!reintentable) break;
+                if (intento < 2) {
+                    const delay = Math.pow(2, intento) * 1000;
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            }
+        }
+    }
+
+    throw ultimoError || new Error('No se pudo extraer la factura con ningún modelo.');
+}
+
+/**
+ * Abre un modal de solo lectura con todos los datos del cheque,
+ * incluyendo los datos de la factura adjunta si existe.
+ */
+function verDetalleCheque(id) {
+    const m = movimientosTesoreria.find(x => x.id === id);
+    if (!m) { mostrarError('No se encontró el movimiento.'); return; }
+
+    chequeDetalleActualId = id;
+
+    const cuenta = cuentas.find(c => c.id === m.cuenta_bancaria_id);
+
+    const filaEstado =
+        m.estado === 'futuro'    ? `<span class="badge badge-futuro">Futuro</span>` :
+        m.estado === 'pendiente' ? `<span class="badge badge-pendiente-pago">Pendiente</span>` :
+        m.estado === 'cobrado'   ? `<span class="badge badge-cobrado">Cobrado</span>` :
+                                   `<span class="badge badge-anulado">Anulado</span>`;
+
+    const fila = (label, valor) => `
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--color-borde);font-size:var(--texto-sm);">
+            <span style="color:var(--color-texto-tenue);">${label}</span>
+            <span style="color:var(--color-texto);font-weight:500;text-align:right;">${valor}</span>
+        </div>
+    `;
+
+    const contenido = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--espacio-lg);">
+            <div>
+                <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-texto-secundario);margin-bottom:var(--espacio-xs);text-transform:uppercase;letter-spacing:0.05em;">CHEQUE</div>
+                ${fila('Nro. cheque', `<span style="font-family:var(--fuente-mono);">${m.numero_cheque || '—'}</span>`)}
+                ${fila('Cuenta', cuenta?.alias || cuenta?.banco || '—')}
+                ${fila('F. emisión', m.fecha_emision ? formatearFecha(m.fecha_emision) : '—')}
+                ${fila('F. cobro', formatearFecha(m.fecha_cobro))}
+                ${fila('F. balde', formatearFecha(m.fecha_balde))}
+                ${fila('Monto', `<span style="font-family:var(--fuente-mono);">$ ${formatearNumero(m.monto)}</span>`)}
+                ${fila('Estado', filaEstado)}
+                ${m.fecha_cobrado_real ? fila('Cobrado el', formatearFecha(m.fecha_cobrado_real)) : ''}
+            </div>
+            <div>
+                <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-texto-secundario);margin-bottom:var(--espacio-xs);text-transform:uppercase;letter-spacing:0.05em;">DESTINO</div>
+                ${fila('Beneficiario', m.beneficiarios?.nombre || '—')}
+                ${fila('Tipo', badgeTipoBen(m.beneficiarios?.tipo))}
+                ${fila('Categoría', m.categorias_gasto?.nombre || '—')}
+                ${m.empleado_entrega ? fila('Entregado por', m.empleado_entrega.nombre) : ''}
+                ${m.notas ? fila('Notas', m.notas) : ''}
+            </div>
+        </div>
+        <div id="bloque-facturas-detalle" style="margin-top:var(--espacio-md);">
+            ${renderizarSeccionFacturasCheque(m, true)}
+        </div>
+    `;
+
+    const puedeEditar = ['admin_total', 'admin'].includes(window.__USUARIO__?.rol);
+    const footer = `
+        <button class="btn-secundario" onclick="cerrarModal()">Cerrar</button>
+        ${puedeEditar ? `<button class="btn-primario" onclick="cerrarModal(); editarMovimiento('${m.id}')">Editar</button>` : ''}
+    `;
+
+    abrirModal('Detalle del movimiento', contenido, footer);
+}
+
+/**
+ * Renderiza la sección de facturas vinculadas al cheque.
+ * Se separa para poder refrescarla sin cerrar el modal.
+ */
+function renderizarSeccionFacturasCheque(m, soloLectura = false) {
+    const estadoFact = estadoFacturaMovimiento(m);
+    // En modo solo-lectura (ojito) se ocultan TODOS los botones de modificación,
+    // incluso para admins. Para editar facturas hay que pasar al modal de "Editar".
+    const puedeEditar = !soloLectura && ['admin_total', 'admin'].includes(window.__USUARIO__?.rol);
+
+    if (estadoFact === 'na') {
+        return `
+            <div style="padding:var(--espacio-md);background:var(--color-fondo-secundario);border-radius:var(--radio-md);color:var(--color-texto-tenue);font-size:var(--texto-sm);">
+                No corresponde factura para este movimiento.
+            </div>
+        `;
+    }
+
+    const facturas = m.facturas_vinculadas || [];
+    const chequeId = m.id;
+
+    const botones = puedeEditar ? `
+        <div style="display:flex;gap:var(--espacio-xs);">
+            <button class="btn-primario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="subirNuevaFacturaAlCheque('${chequeId}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Subir nueva
+            </button>
+            <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="abrirModalVincularFactura('${chequeId}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                Vincular existente
+            </button>
+        </div>
+    ` : '';
+
+    if (facturas.length === 0) {
+        return `
+            <div style="padding:var(--espacio-md);background:rgba(201,76,76,0.06);border:1px solid var(--color-error);border-radius:var(--radio-md);">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--espacio-sm);flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:var(--espacio-xs);color:var(--color-error);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <strong>Falta la factura</strong>
+                    </div>
+                    ${botones}
+                </div>
+            </div>
+        `;
+    }
+
+    // Aviso de inconsistencia: chequeamos cada factura contra la suma
+    // de TODOS los cheques vinculados a ella (no solo este).
+    // Solo avisamos si tenemos monto_total cargado (si es null no podemos comparar).
+    const inconsistentes = facturas.filter(f =>
+        Number(f.monto_total || 0) > 0 &&
+        Math.abs(Number(f.monto_total) - Number(f._total_cheques || 0)) > 1
+    );
+
+    let avisoMonto = '';
+    if (inconsistentes.length > 0) {
+        const detalles = inconsistentes.map(f => {
+            const cantCheques = (f._cheques_ids || []).length;
+            const chequeTxt = cantCheques === 1 ? '1 cheque' : `${cantCheques} cheques`;
+            return `<li>Factura ${f.numero || '(sin nº)'}: $ ${formatearNumero(f.monto_total)} — cubierta por ${chequeTxt} por un total de $ ${formatearNumero(f._total_cheques || 0)}</li>`;
+        }).join('');
+
+        avisoMonto = `
+            <div style="margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:rgba(232,183,74,0.10);border:1px solid #e8b74a;border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:#e8b74a;">
+                <div style="display:flex;align-items:flex-start;gap:var(--espacio-xs);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <div>
+                        <div style="font-weight:600;margin-bottom:4px;">Atención: monto no cuadra</div>
+                        <ul style="margin:0;padding-left:16px;">${detalles}</ul>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    const filasFact = facturas.map(f => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--espacio-sm);padding:var(--espacio-sm);border-bottom:1px solid var(--color-borde);flex-wrap:wrap;">
+            <div style="flex:1;min-width:180px;">
+                <div style="font-size:var(--texto-sm);font-weight:500;color:var(--color-texto);">
+                    <span style="font-family:var(--fuente-mono);">${f.numero || '(sin nº)'}</span>
+                    ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);"> · ${f.emisor_nombre}</span>` : ''}
+                </div>
+                <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">
+                    ${f.fecha ? formatearFecha(f.fecha) : 'Sin fecha'}
+                    ${f.monto_total ? ` · $ ${formatearNumero(f.monto_total)}` : ''}
+                    ${f.emisor_cuit ? ` · CUIT ${f.emisor_cuit}` : ''}
+                </div>
+                ${(f._cheques_ids || []).length > 1 ? `
+                    <div style="font-size:var(--texto-xs);color:var(--color-dorado);margin-top:2px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;vertical-align:-1px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        Vinculada a ${f._cheques_ids.length} cheques (total $ ${formatearNumero(f._total_cheques || 0)})
+                    </div>
+                ` : ''}
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+                <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="verFacturaCheque('${f.archivo_url}')" title="Ver PDF">Ver</button>
+                ${puedeEditar ? `
+                    <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="abrirModalEditarFactura('${f.id}')" title="Editar datos de la factura">Editar</button>
+                    <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="desvincularFactura('${chequeId}', '${f.id}')" title="Desvincular del cheque (la factura sigue existiendo)">Desvincular</button>
+                    <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);color:var(--color-error);border-color:var(--color-error);" onclick="eliminarFacturaParaSiempre('${f.id}')" title="Eliminar la factura de todos los cheques y del sistema">🗑</button>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
+
+    return `
+        <div style="padding:var(--espacio-md);background:rgba(74,158,110,0.05);border:1px solid var(--color-verde);border-radius:var(--radio-md);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--espacio-sm);margin-bottom:var(--espacio-sm);flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:var(--espacio-xs);font-weight:600;color:var(--color-verde);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><polyline points="20 6 9 17 4 12"/></svg>
+                    ${facturas.length} factura${facturas.length !== 1 ? 's' : ''} vinculada${facturas.length !== 1 ? 's' : ''}
+                </div>
+                ${botones}
+            </div>
+            <div style="border:1px solid var(--color-borde);border-radius:var(--radio-sm,4px);background:var(--color-fondo-tarjeta);">
+                ${filasFact}
+            </div>
+            ${avisoMonto}
+        </div>
+    `;
+}
+
+/**
+ * Refresca la sección de facturas dentro del modal de detalle sin cerrarlo.
+ * Requiere que cargarTesoreria haya refrescado movimientosTesoreria.
+ */
+function refrescarSeccionFacturasDetalle() {
+    // Refresca el modal del ojito (read-only) si está abierto
+    if (chequeDetalleActualId) {
+        const cont = document.getElementById('bloque-facturas-detalle');
+        const m = movimientosTesoreria.find(x => x.id === chequeDetalleActualId);
+        if (cont && m) cont.innerHTML = renderizarSeccionFacturasCheque(m, true);
+    }
+    // Refresca el modal de edición (con botones) si está abierto
+    refrescarSeccionFacturasEdicion();
+}
+
+/**
+ * Refresca la sección de facturas dentro del modal de EDICIÓN del cheque
+ * (con todos los botones). Análoga a refrescarSeccionFacturasDetalle()
+ * pero apuntando al bloque del modal de edición. Se llama después de
+ * agregar/quitar/editar una factura para que el cambio se vea sin cerrar.
+ */
+function refrescarSeccionFacturasEdicion() {
+    if (!chequeEditandoId) return;
+    const cont = document.getElementById('bloque-facturas-edicion');
+    if (!cont) return;
+    const m = movimientosTesoreria.find(x => x.id === chequeEditandoId);
+    if (!m) return;
+    cont.innerHTML = renderizarSeccionFacturasCheque(m, false);
+}
+
+/**
+ * Genera un signed URL y abre la factura en una pestaña nueva.
+ */
+async function verFacturaCheque(path) {
+    if (!path) return;
+    try {
+        const { data, error } = await db.storage
+            .from('facturas-cheques')
+            .createSignedUrl(path, 300); // 5 minutos
+        if (error) throw error;
+        window.open(data.signedUrl, '_blank');
+    } catch (err) {
+        mostrarError('No se pudo abrir la factura: ' + err.message);
+    }
+}
+
+// ==============================================
+// GESTIÓN DE FACTURAS VINCULADAS A CHEQUES (N:N)
+// ==============================================
+
+/**
+ * Dispara un <input type=file> oculto para que el usuario elija un archivo
+ * de factura, lo extrae con Gemini, verifica duplicados y crea+vincula
+ * la factura al cheque dado.
+ */
+async function subirNuevaFacturaAlCheque(chequeId) {
+    // Crear input temporal oculto
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,image/*';
+    input.style.display = 'none';
+
+    input.onchange = async () => {
+        const file = input.files?.[0];
+        document.body.removeChild(input);
+        if (!file) return;
+        await procesarSubidaFacturaNueva(chequeId, file);
+    };
+
+    document.body.appendChild(input);
+    input.click();
+}
+
+/**
+ * Pipeline: Gemini → dedup (numero+CUIT) → crear o reusar factura → upload PDF → vincular.
+ */
+async function procesarSubidaFacturaNueva(chequeId, file) {
+    const apiKey = window.__ENV__?.GEMINI_API_KEY;
+    const cheque = movimientosTesoreria.find(m => m.id === chequeId);
+    if (!cheque) { mostrarError('No se encontró el cheque.'); return; }
+
+    // Extracción con Gemini (si hay API key). Si falla o no hay, seguimos sin datos.
+    let datos = null;
+    if (apiKey) {
+        mostrarAlerta('Extrayendo datos de la factura con IA... puede tardar unos segundos.', 'info');
+        try {
+            const mimeType = file.type?.startsWith('image/') ? file.type : 'application/pdf';
+            const base64 = await archivoABase64Cheque(file);
+            datos = await llamarGeminiFacturaCheque(apiKey, base64, mimeType);
+        } catch (err) {
+            console.error('Gemini falló al extraer factura:', err);
+            mostrarAlerta('No se pudieron extraer los datos automáticamente. Se subirá la factura igual (podés editar datos después).');
+        }
+    }
+
+    const numero      = datos?.numero_factura || null;
+    const fecha       = datos?.fecha || null;
+    const emisorCuit  = datos?.vendedor_cuit || null;
+    const emisorNom   = datos?.vendedor_nombre || null;
+    const montoTotal  = datos?.total ? Number(datos.total) : null;
+
+    // Dedup: buscar factura existente con mismo numero + emisor_cuit
+    let facturaExistente = null;
+    if (numero) {
+        const query = db.from('facturas').select('*').eq('numero', numero);
+        const finalQuery = emisorCuit ? query.eq('emisor_cuit', emisorCuit) : query.is('emisor_cuit', null);
+        const encontradas = await ejecutarConsulta(finalQuery, 'buscar factura duplicada');
+        if (encontradas && encontradas.length > 0) facturaExistente = encontradas[0];
+    }
+
+    if (facturaExistente) {
+        // Consultar a qué cheques ya está vinculada
+        const vincs = await ejecutarConsulta(
+            db.from('cheques_facturas').select('cheque_id').eq('factura_id', facturaExistente.id),
+            'consultar vinculaciones'
+        );
+        const cantCheques = (vincs || []).length;
+        const yaVinculada = (vincs || []).some(v => v.cheque_id === chequeId);
+
+        if (yaVinculada) {
+            mostrarAlerta('Esta factura ya está vinculada a este cheque.');
+            return;
+        }
+
+        const msg = `Esta factura (Nº ${numero}${emisorCuit ? ', CUIT ' + emisorCuit : ''}) ya está cargada en el sistema y vinculada a ${cantCheques} cheque${cantCheques !== 1 ? 's' : ''}.\n\n¿Querés vincularla también a este cheque?`;
+        if (!confirm(msg)) return;
+
+        const ok = await ejecutarConsulta(
+            db.from('cheques_facturas').insert({ cheque_id: chequeId, factura_id: facturaExistente.id }),
+            'vincular factura existente'
+        );
+        if (ok === undefined) return;
+
+        mostrarExito('Factura vinculada correctamente.');
+        await cargarTesoreria();
+        refrescarSeccionFacturasDetalle();
+        return;
+    }
+
+    // Nueva factura: subir archivo a Storage
+    const extOriginal = file.name.split('.').pop().toLowerCase();
+    const ext = ['pdf', 'jpg', 'jpeg', 'png'].includes(extOriginal) ? extOriginal : 'pdf';
+    const path = `${chequeId}/${Date.now()}.${ext}`;
+
+    try {
+        const { error: upErr } = await db.storage
+            .from('facturas-cheques')
+            .upload(path, file, { upsert: false });
+        if (upErr) throw upErr;
+    } catch (err) {
+        mostrarError('No se pudo subir el archivo: ' + err.message);
+        return;
+    }
+
+    // Insertar factura
+    const insertadas = await ejecutarConsulta(
+        db.from('facturas').insert({
+            numero,
+            fecha,
+            emisor_cuit:   emisorCuit,
+            emisor_nombre: emisorNom,
+            monto_total:   montoTotal,
+            archivo_url:   path,
+            empresa_id:    cheque.empresa_id,
+            creado_por:    window.__USUARIO__?.id || null
+        }).select(),
+        'crear factura'
+    );
+
+    if (!insertadas || insertadas.length === 0) {
+        // Rollback del archivo
+        await db.storage.from('facturas-cheques').remove([path]);
+        return;
+    }
+
+    const nuevaFacturaId = insertadas[0].id;
+
+    // Vincular
+    const vincOk = await ejecutarConsulta(
+        db.from('cheques_facturas').insert({ cheque_id: chequeId, factura_id: nuevaFacturaId }),
+        'vincular factura al cheque'
+    );
+    if (vincOk === undefined) {
+        // Rollback: borrar factura y archivo
+        await db.from('facturas').delete().eq('id', nuevaFacturaId);
+        await db.storage.from('facturas-cheques').remove([path]);
+        return;
+    }
+
+    // Detectar extracción vacía: cubre 3 casos en los que conviene abrir
+    // directo el modal de edición para que el usuario complete los datos:
+    //   1) No había API key (nunca se corrió Gemini)
+    //   2) Gemini tiró error (datos quedó null)
+    //   3) Gemini corrió pero devolvió todos los campos en null
+    const sinDatos = !numero && !fecha && !emisorCuit && !emisorNom && !montoTotal;
+
+    await cargarTesoreria();
+
+    if (sinDatos) {
+        const motivo = !apiKey
+            ? 'No hay IA configurada. Completá los datos manualmente.'
+            : !datos
+                ? 'La IA falló al leer la factura. Completá los datos manualmente.'
+                : 'La IA no pudo leer los datos de la factura. Completalos manualmente.';
+        mostrarAlerta(motivo);
+        // Abrir directo el modal de edición sobre la factura recién creada
+        abrirModalEditarFactura(nuevaFacturaId);
+        return;
+    }
+
+    // Aviso si el monto no coincide
+    const montoCheque = Number(cheque.monto || 0);
+    if (montoTotal && montoCheque && Math.abs(montoTotal - montoCheque) > 1) {
+        mostrarAlerta(`Factura cargada. Atención: el total de la factura ($ ${formatearNumero(montoTotal)}) no coincide con el monto del cheque ($ ${formatearNumero(montoCheque)}).`);
+    } else {
+        mostrarExito('Factura subida y vinculada.');
+    }
+
+    refrescarSeccionFacturasDetalle();
+}
+
+/**
+ * Modal con buscador de facturas existentes (por número, CUIT o emisor).
+ * Al elegir una, la vincula al cheque dado.
+ */
+async function abrirModalVincularFactura(chequeId) {
+    const cheque = movimientosTesoreria.find(m => m.id === chequeId);
+    if (!cheque) { mostrarError('No se encontró el cheque.'); return; }
+
+    // Cargar todas las facturas de la empresa del cheque
+    const facturas = await ejecutarConsulta(
+        db.from('facturas').select('*').eq('empresa_id', cheque.empresa_id).order('fecha', { ascending: false }),
+        'cargar facturas para vincular'
+    ) || [];
+
+    // IDs de facturas ya vinculadas a este cheque
+    const yaVinculadasIds = new Set((cheque.facturas_vinculadas || []).map(f => f.id));
+
+    // Guardar en window para el buscador
+    window.__facturasDisponibles = facturas.filter(f => !yaVinculadasIds.has(f.id));
+    window.__chequeParaVincular = chequeId;
+
+    const contenido = `
+        <div class="campo-grupo">
+            <label class="campo-label">Buscar factura</label>
+            <input type="text" id="buscador-factura" class="campo-input" placeholder="Nº de factura, CUIT o emisor..." oninput="filtrarFacturasVinculables()" autofocus>
+        </div>
+        <div id="lista-facturas-vinculables" style="max-height:400px;overflow-y:auto;border:1px solid var(--color-borde);border-radius:var(--radio-md);background:var(--color-fondo-tarjeta);"></div>
+    `;
+
+    const footer = `<button class="btn-secundario" onclick="cerrarModal(); abrirDetalleDesdeVincular()">Volver</button>`;
+
+    abrirModal('Vincular factura existente', contenido, footer);
+    filtrarFacturasVinculables();
+}
+
+function filtrarFacturasVinculables() {
+    const q = (document.getElementById('buscador-factura')?.value || '').toLowerCase().trim();
+    const lista = window.__facturasDisponibles || [];
+    const chequeId = window.__chequeParaVincular;
+
+    const filtradas = !q ? lista : lista.filter(f =>
+        (f.numero || '').toLowerCase().includes(q) ||
+        (f.emisor_cuit || '').toLowerCase().includes(q) ||
+        (f.emisor_nombre || '').toLowerCase().includes(q)
+    );
+
+    const cont = document.getElementById('lista-facturas-vinculables');
+    if (!cont) return;
+
+    if (filtradas.length === 0) {
+        cont.innerHTML = `
+            <div style="padding:var(--espacio-lg);text-align:center;color:var(--color-texto-tenue);font-size:var(--texto-sm);">
+                ${lista.length === 0 ? 'No hay facturas disponibles para vincular en esta empresa.' : 'Ninguna factura coincide con la búsqueda.'}
+            </div>
+        `;
+        return;
+    }
+
+    cont.innerHTML = filtradas.map(f => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--espacio-sm);padding:var(--espacio-sm) var(--espacio-md);border-bottom:1px solid var(--color-borde);">
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:var(--texto-sm);font-weight:500;color:var(--color-texto);">
+                    <span style="font-family:var(--fuente-mono);">${f.numero || '(sin nº)'}</span>
+                    ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);"> · ${f.emisor_nombre}</span>` : ''}
+                </div>
+                <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">
+                    ${f.fecha ? formatearFecha(f.fecha) : 'Sin fecha'}
+                    ${f.monto_total ? ` · $ ${formatearNumero(f.monto_total)}` : ''}
+                    ${f.emisor_cuit ? ` · CUIT ${f.emisor_cuit}` : ''}
+                </div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+                <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="verFacturaCheque('${f.archivo_url}')">Ver</button>
+                <button class="btn-primario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="vincularFacturaAlCheque('${chequeId}', '${f.id}')">Vincular</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function vincularFacturaAlCheque(chequeId, facturaId) {
+    const ok = await ejecutarConsulta(
+        db.from('cheques_facturas').insert({ cheque_id: chequeId, factura_id: facturaId }),
+        'vincular factura'
+    );
+    if (ok === undefined) return;
+    mostrarExito('Factura vinculada.');
+    cerrarModal();
+    await cargarTesoreria();
+    // Reabrir el detalle del cheque para que vea el cambio
+    verDetalleCheque(chequeId);
+}
+
+function abrirDetalleDesdeVincular() {
+    const id = window.__chequeParaVincular;
+    if (id) verDetalleCheque(id);
+}
+
+async function desvincularFactura(chequeId, facturaId) {
+    if (!confirm('¿Desvincular esta factura del cheque? La factura seguirá existiendo y podrás volver a vincularla más adelante.')) return;
+
+    const { error } = await db.from('cheques_facturas')
+        .delete()
+        .eq('cheque_id', chequeId)
+        .eq('factura_id', facturaId);
+
+    if (error) {
+        mostrarError('No se pudo desvincular: ' + error.message);
+        return;
+    }
+
+    mostrarExito('Factura desvinculada.');
+    await cargarTesoreria();
+    refrescarSeccionFacturasDetalle();
+}
+
+async function eliminarFacturaParaSiempre(facturaId) {
+    // Consultar a cuántos cheques está vinculada para advertir
+    const vincs = await ejecutarConsulta(
+        db.from('cheques_facturas').select('cheque_id').eq('factura_id', facturaId),
+        'consultar vinculaciones'
+    ) || [];
+
+    const cant = vincs.length;
+    const aviso = cant > 0
+        ? `Esta factura está vinculada a ${cant} cheque${cant !== 1 ? 's' : ''}. Al eliminarla, se desvinculará de TODOS y se borrará el archivo PDF.\n\nEsta acción NO se puede deshacer.\n\n¿Eliminar la factura para siempre?`
+        : `Esta factura no está vinculada a ningún cheque. Se borrará junto con su archivo PDF.\n\n¿Eliminar para siempre?`;
+
+    if (!confirm(aviso)) return;
+
+    // Obtener el path del archivo antes de borrar la fila
+    const { data: facturaData, error: errSelect } = await db.from('facturas').select('archivo_url').eq('id', facturaId).single();
+    if (errSelect) {
+        mostrarError('No se pudo leer la factura: ' + errSelect.message);
+        return;
+    }
+    const archivoPath = facturaData?.archivo_url;
+
+    // Borrar la factura (CASCADE borra las filas de cheques_facturas)
+    const { error: errDel } = await db.from('facturas').delete().eq('id', facturaId);
+    if (errDel) {
+        mostrarError('No se pudo eliminar la factura: ' + errDel.message);
+        return;
+    }
+
+    // Borrar el archivo de Storage (no es crítico si falla, la factura ya está borrada)
+    if (archivoPath) {
+        const { error: errStorage } = await db.storage.from('facturas-cheques').remove([archivoPath]);
+        if (errStorage) console.warn('No se pudo borrar el archivo de Storage:', errStorage.message);
+    }
+
+    mostrarExito('Factura eliminada para siempre.');
+    await cargarTesoreria();
+    refrescarSeccionFacturasDetalle();
+}
+
+/**
+ * Abre un modal para editar los datos de una factura ya cargada
+ * (nº, fecha, emisor, CUIT, monto). El PDF no se toca.
+ */
+async function abrirModalEditarFactura(facturaId) {
+    const { data: f, error } = await db.from('facturas').select('*').eq('id', facturaId).single();
+    if (error || !f) { mostrarError('No se encontró la factura.'); return; }
+
+    // Guardar el id del cheque actual para volver al detalle después
+    const chequeId = chequeDetalleActualId;
+
+    const contenido = `
+        <div class="campos-fila">
+            <div class="campo-grupo">
+                <label class="campo-label">Nº de factura</label>
+                <input type="text" id="edit-fact-numero" class="campo-input"
+                    value="${f.numero || ''}" placeholder="Ej: 00002-00000058">
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">Fecha</label>
+                <input type="text" data-fecha id="edit-fact-fecha" class="campo-input"
+                    value="${isoADDMM(f.fecha)}"
+                    placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
+            </div>
+        </div>
+        <div class="campos-fila">
+            <div class="campo-grupo">
+                <label class="campo-label">Emisor (razón social)</label>
+                <input type="text" id="edit-fact-emisor-nom" class="campo-input"
+                    value="${f.emisor_nombre || ''}" placeholder="Ej: Veron Jorge Omar">
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">CUIT emisor</label>
+                <input type="text" id="edit-fact-emisor-cuit" class="campo-input"
+                    value="${f.emisor_cuit || ''}" placeholder="Ej: 20-12345678-9">
+            </div>
+        </div>
+        <div class="campo-grupo">
+            <label class="campo-label">Monto total</label>
+            <input type="number" id="edit-fact-monto" class="campo-input"
+                value="${f.monto_total || ''}" placeholder="Monto total de la factura" step="0.01" min="0">
+        </div>
+        <div style="margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:var(--color-fondo-secundario);border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:var(--color-texto-tenue);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Dejá los campos en blanco si no tenés el dato. El PDF de la factura no se modifica.
+        </div>
+    `;
+
+    const footer = `
+        <button class="btn-secundario" onclick="cerrarModal(); ${chequeId ? `verDetalleCheque('${chequeId}')` : ''}">Cancelar</button>
+        <button class="btn-primario" onclick="guardarEdicionFactura('${facturaId}', '${chequeId || ''}')">Guardar</button>
+    `;
+
+    abrirModal('Editar datos de la factura', contenido, footer);
+}
+
+async function guardarEdicionFactura(facturaId, chequeId) {
+    const numero     = document.getElementById('edit-fact-numero')?.value.trim() || null;
+    const fecha      = ddmmAISO(document.getElementById('edit-fact-fecha')?.value);
+    const emisorNom  = document.getElementById('edit-fact-emisor-nom')?.value.trim() || null;
+    const emisorCuit = document.getElementById('edit-fact-emisor-cuit')?.value.trim() || null;
+    const montoStr   = document.getElementById('edit-fact-monto')?.value;
+    const monto      = (montoStr && montoStr !== '') ? parseFloat(montoStr) : null;
+
+    const { error } = await db.from('facturas')
+        .update({
+            numero,
+            fecha,
+            emisor_nombre: emisorNom,
+            emisor_cuit:   emisorCuit,
+            monto_total:   monto
+        })
+        .eq('id', facturaId);
+
+    if (error) {
+        // El error más probable es el UNIQUE (numero + emisor_cuit) si ya existe otra con ese combo
+        if (error.code === '23505' || (error.message || '').includes('duplicate')) {
+            mostrarError('Ya existe otra factura con ese número y CUIT. Verificá que no sea duplicada.');
+        } else {
+            mostrarError('No se pudo guardar: ' + error.message);
+        }
+        return;
+    }
+
+    mostrarExito('Factura actualizada.');
+    cerrarModal();
+    await cargarTesoreria();
+    // Volver al detalle del cheque
+    if (chequeId) verDetalleCheque(chequeId);
 }
 
 async function guardarCheque() {
     const cuentaId   = document.getElementById('campo-cuenta')?.value;
     const nroCheque  = document.getElementById('campo-nro-cheque')?.value.trim();
-    const fechaEmis  = document.getElementById('campo-fecha-emision')?.value;
-    const fechaCobro = document.getElementById('campo-fecha-cobro')?.value;
+    const fechaEmis  = ddmmAISO(document.getElementById('campo-fecha-emision')?.value);
+    const fechaCobro = ddmmAISO(document.getElementById('campo-fecha-cobro')?.value);
     const monto      = document.getElementById('campo-monto')?.value;
 
     if (!cuentaId)   { mostrarError('Seleccioná la cuenta bancaria.'); return; }
@@ -743,6 +1827,10 @@ async function guardarCheque() {
     }
     // ─────────────────────────────────────────────────────────────
 
+    // Estado inicial: 'futuro' si la fecha de cobro todavía no llegó, 'pendiente' si ya llegó.
+    // Se promueve automáticamente a 'pendiente' en cargarTesoreria() cuando pasa la fecha.
+    const estadoCalc = fechaCobro > fechaHoyStr() ? 'futuro' : 'pendiente';
+
     const datos = {
         empresa_id:         empresaActivaId,
         cuenta_bancaria_id: cuentaId,
@@ -755,31 +1843,161 @@ async function guardarCheque() {
         categoria_id:       document.getElementById('campo-categoria')?.value || null,
         monto:              parseFloat(monto),
         notas:              document.getElementById('campo-notas')?.value.trim() || null,
+        empleado_entrega_id: document.getElementById('campo-empleado-entrega')?.value || null,
         origen:             'manual'
     };
 
     let resultado;
+    let chequeId = chequeEditandoId;
     if (chequeEditandoId) {
+        // Al editar, sólo reajustamos estado si venía en futuro/pendiente
+        // (no tocamos cobrado/anulado).
+        const actual = movimientosTesoreria.find(m => m.id === chequeEditandoId);
+        if (actual && (actual.estado === 'futuro' || actual.estado === 'pendiente')) {
+            datos.estado = estadoCalc;
+        }
         resultado = await ejecutarConsulta(
             db.from('movimientos_tesoreria').update(datos).eq('id', chequeEditandoId),
             'actualizar cheque'
         );
     } else {
+        datos.estado = estadoCalc;
         resultado = await ejecutarConsulta(
-            db.from('movimientos_tesoreria').insert(datos),
+            db.from('movimientos_tesoreria').insert(datos).select(),
             'registrar cheque'
         );
+        if (resultado && resultado[0]) chequeId = resultado[0].id;
     }
 
     if (resultado === undefined) return;
-    cerrarModal();
-    mostrarExito(chequeEditandoId ? 'Cheque actualizado' : 'Cheque registrado');
-    chequeEditandoId = null;
-    await cargarTesoreria();
+
+    // ── Si el beneficiario es un arrendador y hay QQ, crear movimiento y descontar saldo ──
+    if (benTipo === 'arrendador' && !chequeEditandoId) {
+        const arrId    = document.getElementById('ben-arrendador')?.value;
+        const qqStr    = document.getElementById('ben-arrendador-qq')?.value;
+        const tipoQQ   = document.getElementById('ben-arrendador-tipo')?.value || 'blanco';
+        const qqVal    = parseFloat(qqStr);
+
+        if (arrId && qqVal > 0) {
+            // Precio por quintal = monto del cheque / qq (para registrar en movimientos)
+            const precioQQ = parseFloat(monto) / qqVal;
+
+            // Insertar en la tabla movimientos (la misma que usa el módulo de arrendamientos)
+            const nuevoMov = await ejecutarConsulta(
+                db.from('movimientos').insert({
+                    arrendador_id:  arrId,
+                    fecha:          fechaCobro,
+                    qq:             qqVal,
+                    precio_quintal: Math.round(precioQQ * 100) / 100,
+                    moneda:         'ARS',
+                    tipo:           tipoQQ,
+                    estado_factura: 'sin_factura',
+                    observaciones:  `Pago mediante cheque N° ${nroCheque}`,
+                    usuario_id:     window.__USUARIO__?.id || null
+                }),
+                'crear movimiento arrendamiento desde tesorería'
+            );
+
+            if (nuevoMov !== undefined) {
+                // Descontar qq del saldo del arrendador en la campaña activa
+                await descontarQQArrendador(arrId, tipoQQ, qqVal);
+            }
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const eraEdicion = !!chequeEditandoId;
+    mostrarExito(eraEdicion ? 'Cheque actualizado' : 'Cheque registrado');
+
+    if (eraEdicion) {
+        // En modo edición sí cerramos: el usuario ya manejó las facturas dentro del modal.
+        cerrarModal();
+        chequeEditandoId = null;
+        await cargarTesoreria();
+    } else {
+        // Nuevo cheque: refrescamos data y reabrimos el modal en modo "Editar"
+        // con el cheque recién creado, para que pueda subir/vincular factura
+        // sin tener que ir a buscar el lápiz desde la tabla.
+        cerrarModal();
+        await cargarTesoreria();
+        const recienCreado = movimientosTesoreria.find(m => m.id === chequeId);
+        if (recienCreado) {
+            abrirModalCheque(recienCreado);
+        }
+    }
+}
+
+/**
+ * Descuenta qq del saldo del arrendador en la campaña activa.
+ * Espejo simplificado de actualizarSaldo() en movimientos.js.
+ */
+async function descontarQQArrendador(arrendadorId, tipo, qq) {
+    // Obtener campaña activa
+    const campanas = await ejecutarConsulta(
+        db.from('campanas').select('id').eq('activa', true).limit(1),
+        'obtener campaña activa (tesorería)'
+    );
+    const campanaId = campanas?.[0]?.id;
+    if (!campanaId) {
+        console.warn('Tesorería: no hay campaña activa — saldo no descontado');
+        return;
+    }
+
+    // Buscar registro de saldo existente
+    const saldos = await ejecutarConsulta(
+        db.from('saldos')
+            .select('*')
+            .eq('arrendador_id', arrendadorId)
+            .eq('campana_id', campanaId),
+        'buscar saldo (tesorería)'
+    );
+
+    const columna = tipo === 'blanco' ? 'qq_deuda_blanco' : 'qq_deuda_negro';
+
+    if (saldos && saldos.length > 0) {
+        // Restar los qq del saldo actual
+        const saldoActual = saldos[0][columna] || 0;
+        await ejecutarConsulta(
+            db.from('saldos')
+                .update({ [columna]: saldoActual - qq })
+                .eq('id', saldos[0].id),
+            'actualizar saldo (tesorería)'
+        );
+    } else {
+        // No hay saldo previo — crear con valor negativo (se pagó antes de cargar la deuda)
+        await ejecutarConsulta(
+            db.from('saldos')
+                .insert({
+                    arrendador_id: arrendadorId,
+                    campana_id:    campanaId,
+                    [columna]:     -qq
+                }),
+            'crear saldo (tesorería)'
+        );
+    }
+}
+
+async function revertirAPendiente(id) {
+    // Si la fecha de cobro todavía no llegó, el cheque vuelve a "futuro".
+    // Si ya pasó, vuelve a "pendiente".
+    const mov       = movimientosTesoreria.find(m => m.id === id);
+    const nuevoEst  = mov && mov.fecha_cobro && mov.fecha_cobro > fechaHoyStr()
+                      ? 'futuro' : 'pendiente';
+
+    const r = await ejecutarConsulta(
+        db.from('movimientos_tesoreria')
+          .update({ estado: nuevoEst, fecha_cobrado_real: null })
+          .eq('id', id),
+        'revertir cheque'
+    );
+    if (r !== undefined) {
+        mostrarExito(nuevoEst === 'futuro' ? 'Cheque revertido a futuro' : 'Cheque revertido a pendiente');
+        await cargarTesoreria();
+    }
 }
 
 async function marcarCobrado(id) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
     const r = await ejecutarConsulta(
         db.from('movimientos_tesoreria').update({ estado: 'cobrado', fecha_cobrado_real: hoy }).eq('id', id),
         'marcar como cobrado'
@@ -873,10 +2091,13 @@ function abrirModalNuevoBeneficiario() {
 
 // Muestra/oculta los campos según el tipo de beneficiario
 function actualizarFormBeneficiario(tipo) {
-    document.getElementById('ben-grupo-contratista').style.display = tipo === 'contratista' ? '' : 'none';
-    document.getElementById('ben-grupo-empleado').style.display    = tipo === 'empleado'    ? '' : 'none';
-    document.getElementById('ben-grupo-arrendador').style.display  = tipo === 'arrendador'  ? '' : 'none';
-    document.getElementById('ben-grupo-otro').style.display        = tipo === 'otro'        ? '' : 'none';
+    document.getElementById('ben-grupo-contratista').style.display    = tipo === 'contratista' ? '' : 'none';
+    document.getElementById('ben-grupo-empleado').style.display       = tipo === 'empleado'    ? '' : 'none';
+    document.getElementById('ben-grupo-arrendador').style.display     = tipo === 'arrendador'  ? '' : 'none';
+    document.getElementById('ben-grupo-otro').style.display           = tipo === 'otro'        ? '' : 'none';
+    // El bloque de QQ solo aparece cuando se selecciona arrendador
+    const grupoQQ = document.getElementById('ben-grupo-qq-arrendador');
+    if (grupoQQ) grupoQQ.style.display = tipo === 'arrendador' ? '' : 'none';
 }
 
 async function guardarBeneficiario() {
@@ -934,7 +2155,7 @@ function abrirModalSaldo() {
         `<option value="${c.id}">${c.alias || c.banco} (${c.moneda})</option>`
     ).join('');
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="campo-grupo">
@@ -947,7 +2168,7 @@ function abrirModalSaldo() {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha <span class="campo-requerido">*</span></label>
-                <input type="date" id="saldo-fecha" class="campo-input" value="${hoy}">
+                <input type="text" data-fecha id="saldo-fecha" class="campo-input" value="${isoADDMM(hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Saldo ($) <span class="campo-requerido">*</span></label>
@@ -966,7 +2187,7 @@ function abrirModalSaldo() {
 
 async function guardarSaldo() {
     const cuentaId = document.getElementById('saldo-cuenta')?.value;
-    const fecha    = document.getElementById('saldo-fecha')?.value;
+    const fecha    = ddmmAISO(document.getElementById('saldo-fecha')?.value);
     const saldo    = document.getElementById('saldo-monto')?.value;
 
     if (!cuentaId) { mostrarError('Seleccioná la cuenta.'); return; }
@@ -1104,7 +2325,7 @@ function abrirModalPrestamo() {
         `<option value="${c.id}">${c.alias || c.banco} (${c.moneda})</option>`
     ).join('');
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
 
     const contenido = `
         <div class="campos-fila">
@@ -1133,7 +2354,7 @@ function abrirModalPrestamo() {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Fecha de otorgamiento <span class="campo-requerido">*</span></label>
-                <input type="date" id="prest-fecha" class="campo-input" value="${hoy}">
+                <input type="text" data-fecha id="prest-fecha" class="campo-input" value="${isoADDMM(hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Tasa de interés anual (%)</label>
@@ -1169,7 +2390,7 @@ async function guardarPrestamo() {
     const moneda     = document.getElementById('prest-moneda')?.value;
     const monto      = parseFloat(document.getElementById('prest-monto')?.value);
     const cantCuotas = parseInt(document.getElementById('prest-cuotas')?.value);
-    const fechaOtorg = document.getElementById('prest-fecha')?.value;
+    const fechaOtorg = ddmmAISO(document.getElementById('prest-fecha')?.value);
     const tasaInput  = document.getElementById('prest-tasa')?.value;
     const cuentaId   = document.getElementById('prest-cuenta')?.value || null;
     const notas      = document.getElementById('prest-notas')?.value.trim() || null;
@@ -1234,7 +2455,7 @@ function generarCuotas(prestamoId, montoTotal, cantCuotas, tasaAnual, fechaOtorg
         for (let i = 1; i <= cantCuotas; i++) {
             const fechaVenc = new Date(fechaBase);
             fechaVenc.setMonth(fechaBase.getMonth() + i);
-            const fechaVencStr = fechaVenc.toISOString().split('T')[0];
+            const fechaVencStr = fechaALocalStr(fechaVenc);
 
             const interes  = saldo * tasaMensual;
             const capital  = cuotaFija - interes;
@@ -1259,7 +2480,7 @@ function generarCuotas(prestamoId, montoTotal, cantCuotas, tasaAnual, fechaOtorg
         for (let i = 1; i <= cantCuotas; i++) {
             const fechaVenc = new Date(fechaBase);
             fechaVenc.setMonth(fechaBase.getMonth() + i);
-            const fechaVencStr = fechaVenc.toISOString().split('T')[0];
+            const fechaVencStr = fechaALocalStr(fechaVenc);
 
             cuotasArr.push({
                 prestamo_id:       prestamoId,
@@ -1279,7 +2500,7 @@ function generarCuotas(prestamoId, montoTotal, cantCuotas, tasaAnual, fechaOtorg
 }
 
 async function marcarCuotaPagada(cuotaId) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyStr();
     const r = await ejecutarConsulta(
         db.from('cuotas_prestamo').update({ estado: 'pagada', fecha_pago_real: hoy }).eq('id', cuotaId),
         'marcar cuota como pagada'
@@ -1813,7 +3034,7 @@ function generarReporte() {
     const saldoReal  = saldoBanco !== null ? saldoBanco - totalEgresos : null;
 
     // Agrupar pendientes por balde (próximos 6)
-    const hoyStr = new Date().toISOString().split('T')[0];
+    const hoyStr = fechaHoyStr();
     const grupos = {};
     pendientes.forEach(m => {
         if (m.fecha_balde >= calcularFechaBaldeJS(hoyStr)) {
@@ -1836,13 +3057,19 @@ function generarReporte() {
     texto += `📅 ${fechaHoy}\n`;
     texto += `${'─'.repeat(38)}\n\n`;
 
+    // Total de movimientos registrados (pendientes + cobrados, excluyendo anulados)
+    const totalMovRegistrados = movimientosTesoreria.filter(m =>
+        m.empresa_id === empresaActivaId && m.estado !== 'anulado'
+    ).length;
+
     if (saldoBanco !== null) {
         texto += `🏦 Saldo banco (ARS):   $ ${formatearNumero(saldoBanco)}\n`;
         texto += `📋 Egresos pendientes:  $ ${formatearNumero(totalEgresos)}\n`;
-        texto += `✅ Saldo real:          $ ${formatearNumero(saldoReal)}\n\n`;
+        texto += `✅ Saldo real:          $ ${formatearNumero(saldoReal)}\n`;
     } else {
-        texto += `⚠️ Saldo banco no cargado — actualizarlo para ver saldo real.\n\n`;
+        texto += `⚠️ Saldo banco no cargado — actualizarlo para ver saldo real.\n`;
     }
+    texto += `📌 Movimientos registrados: ${totalMovRegistrados}\n\n`;
 
     if (baldesOrdenados.length > 0) {
         texto += `📆 PRÓXIMOS VENCIMIENTOS\n`;
@@ -1853,7 +3080,9 @@ function generarReporte() {
             texto += `\n🗓️ Balde ${formatearFecha(balde)} — $ ${formatearNumero(total)}\n`;
             movs.forEach(m => {
                 const tipo = m.tipo === 'cheque' ? '  ✓ Cheque' : m.tipo === 'transferencia' ? '  → Transf.' : '  🏦 Cuota ';
-                texto += `${tipo}  ${(m.beneficiarios?.nombre || '').padEnd(22)} $ ${formatearNumero(m.monto)}\n`;
+                const cat  = m.categorias_gasto?.nombre ? ` (${m.categorias_gasto.nombre})` : '';
+                const ben  = (m.beneficiarios?.nombre || '') + cat;
+                texto += `${tipo}  ${ben.padEnd(30)} $ ${formatearNumero(m.monto)}\n`;
             });
         });
     } else {
@@ -1899,7 +3128,7 @@ function calcularFechaBaldeJS(fechaStr) {
     const offset  = dia % 5;
     const balde   = new Date(fecha);
     balde.setDate(dia - offset);
-    return balde.toISOString().split('T')[0];
+    return fechaALocalStr(balde);
 }
 
 /**
