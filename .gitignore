@@ -26,3 +26,4 @@ npm-debug.log*
 
 # Skills y agentes (configuración local)
 .agents/
+.claude/
