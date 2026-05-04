@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reportes — ERP Agrícola Quintana</title>
+
+    <!-- Fuente Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Estilos -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/tablas.css">
+    <link rel="stylesheet" href="/css/formularios.css">
+    <link rel="stylesheet" href="/css/reportes.css">
+</head>
+<body>
+
+    <!-- Pantalla de carga -->
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando reportes...</p>
+    </div>
+
+    <!-- Contenido principal -->
+    <div id="contenido-principal" class="contenido-principal" style="display: none;">
+        <div class="pagina-contenido">
+
+            <!-- Vista 1: GRID de plantillas -->
+            <div id="vista-plantillas">
+                <div class="reportes-grid" id="reportes-grid">
+                    <!-- Las cards se inyectan desde JS -->
+                </div>
+            </div>
+
+            <!-- Vista 2: Reporte abierto -->
+            <div id="vista-reporte" style="display: none;">
+                <button class="btn-volver" onclick="volverAPlantillas()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                    Volver a reportes
+                </button>
+
+                <div class="reporte-cabecera no-imprimir">
+                    <div>
+                        <h2 class="reporte-titulo" id="reporte-titulo">—</h2>
+                        <p class="reporte-subtitulo" id="reporte-subtitulo">—</p>
+                    </div>
+                    <div class="reporte-acciones">
+                        <button class="btn-secundario" onclick="imprimirReporte()" title="Imprimir o guardar como PDF">
+                            🖨 Imprimir / PDF
+                        </button>
+                        <button class="btn-secundario" onclick="copiarReporteTexto()" title="Copiar al portapapeles">
+                            📋 Copiar
+                        </button>
+                        <a id="reporte-whatsapp" class="btn-secundario" href="#" target="_blank" rel="noopener" title="Compartir por WhatsApp">
+                            💬 WhatsApp
+                        </a>
+                    </div>
+                </div>
+
+                <div class="reporte-filtros no-imprimir" id="reporte-filtros">
+                    <!-- Filtros específicos del reporte se inyectan acá -->
+                </div>
+
+                <div class="reporte-resumen" id="reporte-resumen">
+                    <!-- Resumen / KPIs del reporte -->
+                </div>
+
+                <div class="reporte-contenido" id="reporte-contenido">
+                    <!-- Tabla del reporte -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/reportes.js"></script>
+
+    <script>
+        async function iniciar() {
+            const usuario = await crearLayout(
+                'Reportes',
+                'Informes y reportes filtrables sobre contratos, arrendadores y tesorería'
+            );
+            if (!usuario) return;
+
+            await inicializarReportes();
+        }
+
+        iniciar();
+    </script>
+
+</body>
+</html>

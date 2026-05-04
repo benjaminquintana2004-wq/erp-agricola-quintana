@@ -1,0 +1,265 @@
+/* ==============================================
+   reportes.css — Página de reportes / informes
+   ============================================== */
+
+/* ==============================================
+   GRID DE PLANTILLAS
+   ============================================== */
+
+.reportes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--espacio-md);
+}
+
+.reporte-card {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    padding: var(--espacio-lg);
+    cursor: pointer;
+    transition: border-color var(--transicion-rapida), transform var(--transicion-rapida);
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-sm);
+    text-align: left;
+}
+
+.reporte-card:hover {
+    border-color: var(--color-dorado);
+    transform: translateY(-2px);
+}
+
+.reporte-card-icono {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radio-md);
+    background-color: rgba(201, 168, 76, 0.12);
+    color: var(--color-dorado);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.reporte-card-icono svg {
+    width: 22px;
+    height: 22px;
+}
+
+.reporte-card-titulo {
+    font-size: var(--texto-base);
+    font-weight: 600;
+    color: var(--color-texto);
+    margin: 0;
+}
+
+.reporte-card-descripcion {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-tenue);
+    line-height: 1.4;
+    margin: 0;
+}
+
+.reporte-card-categoria {
+    font-size: var(--texto-xs);
+    font-weight: 600;
+    color: var(--color-dorado);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ==============================================
+   VISTA DE REPORTE ABIERTO
+   ============================================== */
+
+.btn-volver {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: var(--color-texto-secundario);
+    cursor: pointer;
+    font-size: var(--texto-sm);
+    padding: var(--espacio-sm) 0;
+    margin-bottom: var(--espacio-md);
+    transition: color var(--transicion-rapida);
+}
+
+.btn-volver:hover {
+    color: var(--color-dorado);
+}
+
+.reporte-cabecera {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--espacio-md);
+    flex-wrap: wrap;
+    padding-bottom: var(--espacio-md);
+    border-bottom: 1px solid var(--color-borde);
+    margin-bottom: var(--espacio-lg);
+}
+
+.reporte-titulo {
+    font-size: var(--texto-2xl);
+    font-weight: 700;
+    color: var(--color-texto);
+    margin: 0 0 4px 0;
+}
+
+.reporte-subtitulo {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-tenue);
+    margin: 0;
+}
+
+.reporte-acciones {
+    display: flex;
+    gap: var(--espacio-sm);
+    flex-wrap: wrap;
+}
+
+.reporte-acciones .btn-secundario {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--texto-sm);
+}
+
+/* ==============================================
+   FILTROS DEL REPORTE
+   ============================================== */
+
+.reporte-filtros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--espacio-md);
+    align-items: flex-end;
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-md);
+    margin-bottom: var(--espacio-md);
+}
+
+.reporte-filtros .campo-grupo {
+    min-width: 160px;
+    flex: 1;
+    margin: 0;
+}
+
+/* ==============================================
+   RESUMEN / KPIs
+   ============================================== */
+
+.reporte-resumen {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--espacio-md);
+    margin-bottom: var(--espacio-md);
+}
+
+.reporte-resumen-card {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    padding: var(--espacio-md);
+    border-left: 3px solid var(--color-dorado);
+}
+
+.reporte-resumen-label {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.reporte-resumen-valor {
+    font-size: var(--texto-xl);
+    font-weight: 700;
+    color: var(--color-texto);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==============================================
+   TABLA DEL REPORTE
+   ============================================== */
+
+.reporte-contenido {
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    overflow: hidden;
+}
+
+.reporte-vacio {
+    padding: var(--espacio-xl);
+    text-align: center;
+    color: var(--color-texto-tenue);
+}
+
+/* ==============================================
+   IMPRESIÓN / PDF
+   ============================================== */
+
+@media print {
+    .no-imprimir,
+    .sidebar,
+    .barra-superior,
+    .btn-volver,
+    header,
+    nav {
+        display: none !important;
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+    }
+
+    .contenido-principal,
+    .pagina-contenido {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .reporte-cabecera,
+    .reporte-resumen-card,
+    .reporte-contenido {
+        background: white !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .reporte-titulo,
+    .reporte-resumen-valor {
+        color: black !important;
+    }
+
+    .reporte-subtitulo,
+    .reporte-resumen-label {
+        color: #555 !important;
+    }
+
+    .tabla {
+        font-size: 11px;
+    }
+
+    .tabla th,
+    .tabla td {
+        color: black !important;
+        border-color: #ccc !important;
+    }
+
+    .badge {
+        border: 1px solid #888 !important;
+        background: white !important;
+        color: black !important;
+    }
+}

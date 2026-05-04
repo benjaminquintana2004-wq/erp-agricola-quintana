@@ -30,7 +30,8 @@ async function cargarFichaGrupo(ids, usuario) {
         ejecutarConsulta(
             db.from('contratos').select(`
                 id, fecha_inicio, fecha_fin, estado, campo, nombre_grupo, notas_grupo,
-                qq_pactados_anual, qq_negro_anual,
+                hectareas, qq_pactados_anual, qq_negro_anual,
+                qq_por_hectarea, qq_negro_por_hectarea,
                 adelanto_qq, adelanto_dia, adelanto_mes, adelanto_observaciones,
                 contratos_arrendadores ( arrendador_id, es_titular_principal, orden )
             `),
@@ -500,12 +501,29 @@ function renderContratos(contratos, saldoPorContrato, hoy) {
         const s = saldoPorContrato.get(c.id);
         const qqB = s ? parseFloat(s.qq_deuda_blanco || 0) : 0;
         const qqN = s ? parseFloat(s.qq_deuda_negro || 0) : 0;
+
+        // QQ/ha blanco y negro (sub-líneas dentro de la celda Pactado)
+        const qqHaB = parseFloat(c.qq_por_hectarea || 0);
+        const qqHaN = parseFloat(c.qq_negro_por_hectarea || 0);
+        let lineaQQHa = '';
+        if (qqHaB > 0 || qqHaN > 0) {
+            const partes = [];
+            if (qqHaB > 0) partes.push(`${fmtNum(qqHaB)} qq/ha`);
+            if (qqHaN > 0) partes.push(`<span style="color:var(--color-texto-tenue);">+ ${fmtNum(qqHaN)} qq/ha negro</span>`);
+            lineaQQHa = `<br><span style="font-size: var(--texto-xs); color: var(--color-dorado);">${partes.join(' · ')}</span>`;
+        }
+
         return `
             <tr style="cursor:pointer;" onclick="window.location.href='/contratos.html?id=${c.id}'">
                 <td><strong>${c.nombre_grupo || '—'}</strong></td>
                 <td>${c.campo || '—'}</td>
+                <td>${c.hectareas ? fmtNum(c.hectareas) + ' ha' : '—'}</td>
                 <td>${fmtFecha(c.fecha_inicio)} → ${fmtFecha(c.fecha_fin)}</td>
-                <td>${fmtNum(c.qq_pactados_anual)} qq/año ${c.qq_negro_anual ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">+ ${fmtNum(c.qq_negro_anual)} negro</span>` : ''}</td>
+                <td>
+                    ${fmtNum(c.qq_pactados_anual)} qq/año
+                    ${c.qq_negro_anual ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">+ ${fmtNum(c.qq_negro_anual)} negro</span>` : ''}
+                    ${lineaQQHa}
+                </td>
                 <td>${qqB + qqN > 0 ? `<strong>${fmtNum(qqB + qqN)} qq</strong>` : '<span style="color: var(--color-verde);">0 qq</span>'}</td>
                 <td>
                     <div style="display:flex; flex-direction:column; gap:3px; align-items:flex-start;">
@@ -526,6 +544,7 @@ function renderContratos(contratos, saldoPorContrato, hoy) {
                         <tr>
                             <th>Nombre</th>
                             <th>Campo</th>
+                            <th>Hectáreas</th>
                             <th>Vigencia</th>
                             <th>Pactado</th>
                             <th>Pendiente (camp. activa)</th>
