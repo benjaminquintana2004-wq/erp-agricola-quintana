@@ -160,6 +160,21 @@
     color: var(--color-texto-tenue);
 }
 
+/* Sacar las flechitas (spinners) de los inputs numéricos en todo el ERP. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button,
+.campo-input[type="number"]::-webkit-outer-spin-button,
+.campo-input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    margin: 0 !important;
+}
+input[type="number"],
+.campo-input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+}
+
 /* Select */
 .campo-select {
     appearance: none;

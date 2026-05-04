@@ -550,15 +550,21 @@ async function cargarChequesPorContratista(contratistaId) {
     }
 
     // Totales
-    const totalPendiente = cheques.filter(c => c.estado === 'pendiente').reduce((s, c) => s + Number(c.monto), 0);
+    // "Pendiente de cobro" agrupa cheques futuros + ya en fecha pero no cobrados
+    // (ambos representan plata que todavía no salió de la cuenta).
+    const totalPendiente = cheques
+        .filter(c => c.estado === 'pendiente' || c.estado === 'futuro')
+        .reduce((s, c) => s + Number(c.monto), 0);
     const totalCobrado   = cheques.filter(c => c.estado === 'cobrado').reduce((s, c) => s + Number(c.monto), 0);
 
     const filas = cheques.map(c => {
-        const badgeEstado = c.estado === 'pendiente'
-            ? `<span class="badge badge-pendiente-pago">Pendiente</span>`
-            : c.estado === 'cobrado'
-                ? `<span class="badge badge-cobrado">Cobrado</span>`
-                : `<span class="badge badge-anulado">Anulado</span>`;
+        // 4 estados posibles en tesorería: futuro, pendiente, cobrado, anulado
+        const badgeEstado =
+            c.estado === 'futuro'    ? `<span class="badge badge-futuro">Futuro</span>` :
+            c.estado === 'pendiente' ? `<span class="badge badge-pendiente-pago">Pendiente</span>` :
+            c.estado === 'cobrado'   ? `<span class="badge badge-cobrado">Cobrado</span>` :
+            c.estado === 'anulado'   ? `<span class="badge badge-anulado">Anulado</span>` :
+                                       `<span class="badge badge-gris">${c.estado || '—'}</span>`;
 
         return `
         <tr>

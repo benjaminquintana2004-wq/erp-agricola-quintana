@@ -17,6 +17,10 @@ let archivoPDFSeleccionado = null;
 // Cada item: { id|null, tipo, nombre_completo, nombre_pila, apellido,
 //              dni, cuit, domicilio, es_titular_principal, _existente }
 let arrendadoresContrato = [];
+// Representantes legales asociados a una empresa-arrendador del contrato.
+// Cada item: { id?, empresa_idx (índice en arrendadoresContrato), nombre_completo, dni, cuit, cargo, desde, hasta, notas, _existente }
+let representantesContrato = [];
+let representantesOriginalIds = new Set();
 // IDs originalmente vinculados al contrato al abrir el form (para diff al guardar)
 let arrendadoresOriginalIds = new Set();
 // Flag: si el usuario editó el nombre del grupo a mano, no lo pisamos con el autocálculo
@@ -72,6 +76,16 @@ async function cargarContratos() {
         arrendadoresParaSelect = arrendadores;
     }
 
+    // Cargar TODOS los representantes y agruparlos por empresa_id
+    const reps = await ejecutarConsulta(
+        db.from('representantes').select('*'),
+        'cargar representantes'
+    ) || [];
+    const representantesPorEmpresa = {};
+    reps.forEach(r => {
+        (representantesPorEmpresa[r.empresa_id] ||= []).push(r);
+    });
+
     // Calcular el estado de cada contrato + normalizar la lista de arrendadores
     contratosCargados = data.map(c => {
         const vinculos = (c.contratos_arrendadores || [])
@@ -82,6 +96,14 @@ async function cargarContratos() {
                 if (!a.es_titular_principal && b.es_titular_principal) return 1;
                 return (a.orden || 0) - (b.orden || 0);
             });
+
+        // Adjuntar representantes a cada arrendador-empresa
+        vinculos.forEach(v => {
+            if (v.arrendadores && v.arrendadores.tipo === 'empresa') {
+                v.arrendadores._representantes = representantesPorEmpresa[v.arrendadores.id] || [];
+            }
+        });
+
         return {
             ...c,
             arrendadores_vinculados: vinculos,
@@ -208,6 +230,18 @@ function renderizarTablaContratos(contratos) {
             subtitulo = `${arrendadoresMin.length} arrendadores`;
         }
 
+        // Línea adicional: representante(s) de la(s) empresa(s)
+        const repsLine = arrendadoresMin
+            .filter(a => a.tipo === 'empresa' && (a._representantes || []).length > 0)
+            .map(a => {
+                const reps = a._representantes.map(r => {
+                    const cargo = r.cargo ? ` (${r.cargo})` : '';
+                    return `${r.nombre_completo}${cargo}`;
+                }).join(', ');
+                return `Representada por ${reps}`;
+            })
+            .join(' · ');
+
         const campoContrato = c.campo || '—';
         const estadoBadge = obtenerBadgeEstado(c.estado_calculado);
         const renspaBadge = obtenerBadgeRenspa(c);
@@ -219,6 +253,7 @@ function renderizarTablaContratos(contratos) {
             <td>
                 <strong>${nombreGrupo}</strong>
                 ${subtitulo ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${subtitulo}</span>` : ''}
+                ${repsLine ? `<br><span style="font-size: var(--texto-xs); color: var(--color-dorado);">👤 ${repsLine}</span>` : ''}
             </td>
             <td>${empresaBadge}</td>
             <td>${campoContrato}</td>
@@ -268,6 +303,7 @@ function renderizarQQAnualCelda(c) {
     const blanco = parseFloat(c.qq_pactados_anual || 0);
     const negro = parseFloat(c.qq_negro_anual || 0);
     const total = blanco + negro;
+    const qqHa  = parseFloat(c.qq_por_hectarea || 0);
 
     if (total <= 0) {
         return '<span style="color: var(--color-texto-tenue);">—</span>';
@@ -283,9 +319,14 @@ function renderizarQQAnualCelda(c) {
         detalle = 'Blanco';
     }
 
+    const qqHaLinea = qqHa > 0
+        ? `<br><span style="font-size: var(--texto-xs); color: var(--color-dorado);">${Number(qqHa).toLocaleString('es-AR', { maximumFractionDigits: 2 })} qq/ha</span>`
+        : '';
+
     return `
         <strong>${totalStr} qq</strong>
         ${detalle ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${detalle}</span>` : ''}
+        ${qqHaLinea}
     `;
 }
 
@@ -420,8 +461,7 @@ function mostrarAlertas(contratos) {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
-                <span><strong>${porVencer.length} contrato${porVencer.length > 1 ? 's' : ''} por vencer:</strong>
-                ${porVencer.map(c => (c.nombre_grupo || c.arrendadores_vinculados?.[0]?.arrendadores?.nombre || 'Sin nombre')).join(', ')}</span>
+                <span><strong>${porVencer.length} contrato${porVencer.length > 1 ? 's' : ''} por vencer</strong></span>
             </div>
         `;
     }
@@ -507,6 +547,8 @@ function abrirModalNuevoContrato() {
     archivoPDFSeleccionado = null;
     arrendadoresContrato = [];
     arrendadoresOriginalIds = new Set();
+    representantesContrato = [];
+    representantesOriginalIds = new Set();
     nombreGrupoEditadoManualmente = false;
     abrirModalContrato('Nuevo Contrato', {});
 }
@@ -537,6 +579,37 @@ async function editarContrato(id) {
             _existente: true
         }));
     arrendadoresOriginalIds = new Set(arrendadoresContrato.map(a => a.id).filter(Boolean));
+
+    // Cargar representantes vinculados a las empresas-arrendador de este contrato
+    representantesContrato = [];
+    representantesOriginalIds = new Set();
+    const idsEmpresas = arrendadoresContrato
+        .filter(a => a.tipo === 'empresa' && a.id)
+        .map(a => a.id);
+    if (idsEmpresas.length > 0) {
+        const reps = await ejecutarConsulta(
+            db.from('representantes').select('*').in('empresa_id', idsEmpresas),
+            'cargar representantes del contrato'
+        ) || [];
+        representantesContrato = reps.map(r => {
+            // Buscar el índice del arrendador-empresa correspondiente para mostrarlo en la UI
+            const idx = arrendadoresContrato.findIndex(a => a.id === r.empresa_id);
+            return {
+                id: r.id,
+                empresa_idx: idx >= 0 ? idx : 0,
+                nombre_completo: r.nombre_completo || '',
+                dni: r.dni || '',
+                cuit: r.cuit || '',
+                cargo: r.cargo || '',
+                desde: r.desde || '',
+                hasta: r.hasta || '',
+                notas: r.notas || '',
+                _existente: true
+            };
+        });
+        representantesOriginalIds = new Set(reps.map(r => r.id));
+    }
+
     // Al editar, si ya tiene nombre_grupo, lo consideramos "manual" para no pisarlo
     nombreGrupoEditadoManualmente = !!contrato.nombre_grupo;
 
@@ -557,7 +630,8 @@ function abrirModalContrato(titulo, datos) {
                 </div>
                 <div class="pdf-archivo-acciones">
                     <button onclick="verPDFContrato('${datos.pdf_url}')">Ver PDF</button>
-                    <button onclick="extraerConGeminiDesdeStorage('${datos.pdf_url}')">Extraer datos con IA</button>
+                    <button onclick="extraerConIADesdeStorage('${datos.pdf_url}', 'gemini')" title="Extraer con Gemini (Google · gratis)">✨ Extraer con Gemini</button>
+                    <button onclick="extraerConIADesdeStorage('${datos.pdf_url}', 'claude')" title="Extraer con Claude (Anthropic · pago)">✨ Extraer con Claude</button>
                 </div>
             </div>
         `;
@@ -608,6 +682,22 @@ function abrirModalContrato(titulo, datos) {
             </button>
         </div>
 
+        <!-- ===== Representantes legales (solo si hay arrendador empresa) ===== -->
+        <div id="bloque-representantes" style="margin-top: var(--espacio-lg);">
+            <div class="form-seccion-titulo">Representantes legales <span style="font-weight:400;color:var(--color-texto-tenue);font-size:var(--texto-xs);">(opcional)</span></div>
+            <span class="campo-ayuda" style="display:block; margin-bottom: var(--espacio-md);">
+                Persona física que firma en nombre de una empresa-arrendador (presidente, apoderado, etc.).
+                Si la persona algún día firma un contrato propio, el sistema la reconoce por DNI.
+            </span>
+            <div id="representantes-lista">
+                <!-- Se llena dinámicamente por renderRepresentantes() -->
+            </div>
+            <button type="button" class="btn-agregar-fraccion" onclick="agregarRepresentante()" id="btn-agregar-representante">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Agregar representante
+            </button>
+        </div>
+
         <div class="campo-grupo" style="margin-top: var(--espacio-lg);">
             <label class="campo-label">Nombre del grupo <span class="campo-requerido">*</span></label>
             <input type="text" id="campo-nombre-grupo" class="campo-input"
@@ -648,23 +738,36 @@ function abrirModalContrato(titulo, datos) {
             </div>
         </div>
 
+        <div class="campo-grupo">
+            <label class="campo-label">Hectáreas arrendadas</label>
+            <input type="number" id="campo-hectareas" class="campo-input" value="${datos.hectareas || ''}" placeholder="Ej: 33.30" step="0.01" min="0" oninput="recalcularQQAnual()">
+            <span class="campo-ayuda">Total de hectáreas que se arriendan en este contrato</span>
+        </div>
+
         <div class="campos-fila">
             <div class="campo-grupo">
-                <label class="campo-label">Hectáreas arrendadas</label>
-                <input type="number" id="campo-hectareas" class="campo-input" value="${datos.hectareas || ''}" placeholder="Ej: 33.30" step="0.01" min="0">
-                <span class="campo-ayuda">Total de hectáreas que se arriendan en este contrato</span>
+                <label class="campo-label">QQ por hectárea (blanco)</label>
+                <input type="number" id="campo-qq-por-ha" class="campo-input" value="${datos.qq_por_hectarea || ''}" placeholder="Ej: 10" step="0.01" min="0" oninput="recalcularQQAnual()">
+                <span class="campo-ayuda">Quintales por hectárea/año. Si varía entre años (ej: 8/8.5/9), poné el promedio.</span>
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">QQ pactados por año (blanco) <span class="campo-requerido">*</span></label>
                 <input type="number" id="campo-qq" class="campo-input" value="${datos.qq_pactados_anual || ''}" placeholder="Ej: 333" step="0.01" min="0">
-                <span class="campo-ayuda">Total de qq que figuran en el contrato</span>
+                <span class="campo-ayuda">Total de qq que figuran en el contrato. Se calcula solo si cargás qq/ha y hectáreas.</span>
             </div>
         </div>
 
-        <div class="campo-grupo">
-            <label class="campo-label">QQ adicionales en negro por año</label>
-            <input type="number" id="campo-qq-negro" class="campo-input" value="${datos.qq_negro_anual || ''}" placeholder="Ej: 133" step="0.01" min="0">
-            <span class="campo-ayuda">Si hay un acuerdo verbal por qq extra fuera del contrato. Dejar en blanco si no aplica.</span>
+        <div class="campos-fila">
+            <div class="campo-grupo">
+                <label class="campo-label">QQ por hectárea (negro)</label>
+                <input type="number" id="campo-qq-negro-por-ha" class="campo-input" value="${datos.qq_negro_por_hectarea || ''}" placeholder="Ej: 4" step="0.01" min="0" oninput="recalcularQQAnual()">
+                <span class="campo-ayuda">Quintales adicionales en negro por hectárea/año (acuerdo verbal).</span>
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">QQ adicionales en negro por año</label>
+                <input type="number" id="campo-qq-negro" class="campo-input" value="${datos.qq_negro_anual || ''}" placeholder="Ej: 133" step="0.01" min="0">
+                <span class="campo-ayuda">Total de qq en negro por año. Se calcula solo si cargás qq/ha negro y hectáreas. Dejar en blanco si no aplica.</span>
+            </div>
         </div>
 
         <hr class="form-separador">
@@ -796,6 +899,7 @@ function abrirModalContrato(titulo, datos) {
 
     // Renderizar chips de arrendadores (estado cargado en editarContrato / abrirModalNuevoContrato)
     renderChipsArrendadores();
+    renderRepresentantes();
     // Si el nombre_grupo está vacío y hay arrendadores, autocalcularlo
     if (!contratoEditandoId && !nombreGrupoEditadoManualmente) {
         actualizarNombreGrupoAuto();
@@ -986,7 +1090,8 @@ function seleccionarPDF(event) {
                     <span class="campo-ayuda">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
                 </div>
                 <div class="pdf-archivo-acciones">
-                    <button onclick="extraerDePDFLocal()">Extraer datos con IA</button>
+                    <button onclick="extraerDePDFLocal('gemini')" title="Extraer con Gemini (Google · gratis)">✨ Extraer con Gemini</button>
+                    <button onclick="extraerDePDFLocal('claude')" title="Extraer con Claude (Anthropic · pago)">✨ Extraer con Claude</button>
                 </div>
             </div>
         `;
@@ -1087,40 +1192,54 @@ async function verPDFContrato(pdfPath) {
 // ==============================================
 
 /**
- * Extrae datos del PDF seleccionado localmente usando Gemini.
+ * Devuelve la API key configurada para la IA elegida, o null si no está configurada.
  */
-async function extraerDePDFLocal() {
+function obtenerApiKeyIA(ia) {
+    return ia === 'claude'
+        ? (window.__ENV__?.ANTHROPIC_API_KEY || null)
+        : (window.__ENV__?.GEMINI_API_KEY  || null);
+}
+
+/**
+ * Llama a la IA elegida (gemini | claude) con el PDF en base64.
+ */
+async function llamarIA(ia, apiKey, pdfBase64) {
+    return ia === 'claude'
+        ? llamarClaude(apiKey, pdfBase64)
+        : llamarGemini(apiKey, pdfBase64);
+}
+
+/**
+ * Extrae datos del PDF seleccionado localmente con la IA elegida (gemini | claude).
+ */
+async function extraerDePDFLocal(ia = 'gemini') {
     if (!archivoPDFSeleccionado) {
         mostrarError('No hay un PDF seleccionado.');
         return;
     }
 
-    const geminiKey = window.__ENV__?.GEMINI_API_KEY;
-    if (!geminiKey) {
-        mostrarError('La API Key de Gemini no está configurada. Avisale al administrador.');
+    const apiKey = obtenerApiKeyIA(ia);
+    if (!apiKey) {
+        mostrarError(`La API Key de ${ia === 'claude' ? 'Claude' : 'Gemini'} no está configurada. Avisale al administrador.`);
         return;
     }
 
-    // Mostrar estado de carga
+    const nombreIA = ia === 'claude' ? 'Claude' : 'Gemini';
     const container = document.getElementById('gemini-estado-container');
     if (container) {
         container.innerHTML = `
             <div class="gemini-estado">
                 <div class="spinner"></div>
-                Enviando PDF a Gemini para extraer datos...
+                Enviando PDF a ${nombreIA} para extraer datos...
             </div>
         `;
     }
 
     try {
-        // Convertir PDF a base64
         const base64 = await archivoABase64(archivoPDFSeleccionado);
-
-        // Llamar a Gemini
-        const datosExtraidos = await llamarGemini(geminiKey, base64);
+        const datosExtraidos = await llamarIA(ia, apiKey, base64);
 
         if (datosExtraidos) {
-            // Auto-completar los campos del formulario (puede crear arrendador)
             await autocompletarFormulario(datosExtraidos);
 
             if (container) {
@@ -1129,48 +1248,47 @@ async function extraerDePDFLocal() {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;">
                             <polyline points="20 6 9 17 4 12"/>
                         </svg>
-                        Datos extraídos exitosamente. Revisá los campos antes de guardar.
+                        Datos extraídos con ${nombreIA}. Revisá los campos antes de guardar.
                     </div>
                 `;
             }
-            mostrarExito('Datos extraídos del PDF. Revisá y corregí lo que haga falta.');
+            mostrarExito(`Datos extraídos con ${nombreIA}. Revisá y corregí lo que haga falta.`);
         }
     } catch (err) {
         console.error('Error extrayendo datos del PDF:', err);
         if (container) {
             container.innerHTML = `
                 <div class="gemini-estado gemini-error">
-                    Error al extraer datos: ${err.message}
+                    Error con ${nombreIA}: ${err.message}
                 </div>
             `;
         }
-        mostrarError('No se pudieron extraer datos del PDF.');
+        mostrarError(`${nombreIA} no pudo extraer los datos. Probá la otra IA o cargá los datos a mano.`);
     }
 }
 
 /**
- * Extrae datos de un PDF ya subido (por URL).
- * Descarga el PDF, lo convierte a base64 y lo manda a Gemini.
+ * Extrae datos de un PDF ya subido a Storage con la IA elegida (gemini | claude).
  */
-async function extraerConGeminiDesdeStorage(pdfPath) {
-    const geminiKey = window.__ENV__?.GEMINI_API_KEY;
-    if (!geminiKey) {
-        mostrarError('La API Key de Gemini no está configurada.');
+async function extraerConIADesdeStorage(pdfPath, ia = 'gemini') {
+    const apiKey = obtenerApiKeyIA(ia);
+    if (!apiKey) {
+        mostrarError(`La API Key de ${ia === 'claude' ? 'Claude' : 'Gemini'} no está configurada.`);
         return;
     }
 
+    const nombreIA = ia === 'claude' ? 'Claude' : 'Gemini';
     const container = document.getElementById('gemini-estado-container');
     if (container) {
         container.innerHTML = `
             <div class="gemini-estado">
                 <div class="spinner"></div>
-                Descargando PDF y enviando a Gemini...
+                Descargando PDF y enviando a ${nombreIA}...
             </div>
         `;
     }
 
     try {
-        // Descargar el PDF desde Supabase Storage usando URL firmada
         const { data: urlData, error: urlError } = await db.storage
             .from('contratos')
             .createSignedUrl(pdfPath, 300);
@@ -1183,7 +1301,7 @@ async function extraerConGeminiDesdeStorage(pdfPath) {
         const blob = await response.blob();
         const base64 = await blobABase64(blob);
 
-        const datosExtraidos = await llamarGemini(geminiKey, base64);
+        const datosExtraidos = await llamarIA(ia, apiKey, base64);
 
         if (datosExtraidos) {
             await autocompletarFormulario(datosExtraidos);
@@ -1193,20 +1311,26 @@ async function extraerConGeminiDesdeStorage(pdfPath) {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;">
                             <polyline points="20 6 9 17 4 12"/>
                         </svg>
-                        Datos extraídos exitosamente.
+                        Datos extraídos con ${nombreIA}.
                     </div>
                 `;
             }
-            mostrarExito('Datos extraídos del PDF.');
+            mostrarExito(`Datos extraídos con ${nombreIA}.`);
         }
     } catch (err) {
         console.error('Error:', err);
         if (container) {
             container.innerHTML = `
-                <div class="gemini-estado gemini-error">Error: ${err.message}</div>
+                <div class="gemini-estado gemini-error">Error con ${nombreIA}: ${err.message}</div>
             `;
         }
+        mostrarError(`${nombreIA} no pudo extraer los datos. Probá la otra IA o cargá a mano.`);
     }
+}
+
+// Compatibilidad con código viejo que llamaba a extraerConGeminiDesdeStorage()
+function extraerConGeminiDesdeStorage(pdfPath) {
+    return extraerConIADesdeStorage(pdfPath, 'gemini');
 }
 
 /**
@@ -1375,6 +1499,8 @@ Si un campo no aparece en el documento, poné null. No inventes datos.
 
 IMPORTANTE — Arrendadores múltiples: un contrato puede tener UNO o VARIOS arrendadores (propietarios/locadores/dadores del campo). Es común que sean hermanos, matrimonios, sucesiones o socios. Devolvé a TODOS en el array "arrendadores", uno por elemento. Si en el contrato aparece una sola razón social (empresa), devolvé un único elemento con tipo='empresa'.
 
+IMPORTANTE — Representantes legales: cuando el arrendador es una EMPRESA (SA, SRL, Sucesión, etc.), suele firmar una persona física en su nombre con frases como "representada por", "en su carácter de presidente/apoderado", "actuando en representación de". Esa persona NO va en el array "arrendadores" — va en el array "representantes" con su nombre, DNI, cargo y a qué empresa representa. Una persona física que firma a título personal NO es representante.
+
 Formato de respuesta (solo JSON, sin markdown ni explicaciones):
 {
     "arrendadores": [
@@ -1388,11 +1514,20 @@ Formato de respuesta (solo JSON, sin markdown ni explicaciones):
             "domicilio": "domicilio completo si aparece, null si no."
         }
     ],
+    "representantes": [
+        {
+            "empresa_nombre": "nombre exacto de la empresa-arrendador que representa, tal como aparece en el array arrendadores (ej: 'Busa S.A.')",
+            "nombre_completo": "nombre completo del representante (ej: 'Hilda Rosa Grosso')",
+            "dni": "DNI sin puntos ni guiones. Null si no aparece.",
+            "cuit": "CUIT en formato XX-XXXXXXXX-X. Null si no aparece.",
+            "cargo": "cargo o rol con que firma (ej: 'Presidenta del Directorio', 'Apoderado', 'Socio gerente'). Null si no aparece."
+        }
+    ],
     "empresa_arrendataria": "empresa que figura como arrendataria (quien toma el campo en arriendo). Si dice 'Diego Ricardo Quintana' o similar devolvé 'diego_quintana'. Si dice 'El Ataco' o similar devolvé 'el_ataco'. Si no podés determinarlo devolvé null.",
     "fecha_inicio": "YYYY-MM-DD",
     "fecha_fin": "YYYY-MM-DD",
     "hectareas_totales": 0,
-    "qq_por_hectarea": 0,
+    "qq_por_hectarea": "quintales por hectárea por año pactados. IMPORTANTE: si el contrato establece valores DISTINTOS para cada año (ej: año 1: 8 qq/ha, año 2: 8.5 qq/ha, año 3: 9 qq/ha), devolvé el PROMEDIO simple (en ese ejemplo 8.5). Si todos los años son iguales, devolvé ese único valor. Solo un número (puede tener decimales), sin comas. Null si no aparece.",
     "qq_totales_anual": 0,
     "grano": "tipo de grano principal (Soja/Maíz/Trigo/Girasol/Sorgo)",
     "campo_nombre": "nombre del campo o establecimiento",
@@ -1475,6 +1610,149 @@ Formato de respuesta (solo JSON, sin markdown ni explicaciones):
 }
 
 /**
+ * Llama a Claude (Anthropic) para extraer datos del contrato.
+ * Mismo prompt y formato de respuesta que llamarGemini, así el resto del flujo
+ * (autocompletarFormulario) es agnóstico de qué IA respondió.
+ */
+async function llamarClaude(apiKey, pdfBase64) {
+    const prompt = `Analizá este contrato de arrendamiento agrícola argentino y extraé los siguientes datos en formato JSON estricto.
+
+Si un campo no aparece en el documento, poné null. No inventes datos.
+
+IMPORTANTE — Arrendadores múltiples: un contrato puede tener UNO o VARIOS arrendadores (propietarios/locadores/dadores del campo). Es común que sean hermanos, matrimonios, sucesiones o socios. Devolvé a TODOS en el array "arrendadores", uno por elemento. Si en el contrato aparece una sola razón social (empresa), devolvé un único elemento con tipo='empresa'.
+
+IMPORTANTE — Representantes legales: cuando el arrendador es una EMPRESA (SA, SRL, Sucesión, etc.), suele firmar una persona física en su nombre con frases como "representada por", "en su carácter de presidente/apoderado", "actuando en representación de". Esa persona NO va en el array "arrendadores" — va en el array "representantes" con su nombre, DNI, cargo y a qué empresa representa. Una persona física que firma a título personal NO es representante.
+
+Formato de respuesta (solo JSON, sin markdown ni explicaciones):
+{
+    "arrendadores": [
+        {
+            "tipo": "persona_fisica o empresa. Usá 'empresa' si es una razón social (SA, SRL, SAS, Ltda, Sucesión, Cooperativa, Asociación, etc.). Usá 'persona_fisica' para personas con nombre y apellido.",
+            "nombre_completo": "nombre completo tal cual figura en el contrato. Para personas: 'Roberto Mateo Rebufatti'. Para empresas: 'Agropecuaria Los Álamos SA'.",
+            "nombre_pila": "solo los nombres de pila, sin apellido. Ej: 'Roberto Mateo'. Null si es empresa.",
+            "apellido": "solo el apellido. Ej: 'Rebufatti'. Si son varios apellidos (paterno+materno), devolvé los dos tal como están ('García López'). Null si es empresa.",
+            "dni": "DNI sin puntos ni guiones, ej '10677055'. Null si es empresa o si no aparece.",
+            "cuit": "CUIT en formato XX-XXXXXXXX-X (con guiones). Null si no aparece.",
+            "domicilio": "domicilio completo si aparece, null si no."
+        }
+    ],
+    "representantes": [
+        {
+            "empresa_nombre": "nombre exacto de la empresa-arrendador que representa, tal como aparece en el array arrendadores (ej: 'Busa S.A.')",
+            "nombre_completo": "nombre completo del representante (ej: 'Hilda Rosa Grosso')",
+            "dni": "DNI sin puntos ni guiones. Null si no aparece.",
+            "cuit": "CUIT en formato XX-XXXXXXXX-X. Null si no aparece.",
+            "cargo": "cargo o rol con que firma (ej: 'Presidenta del Directorio', 'Apoderado', 'Socio gerente'). Null si no aparece."
+        }
+    ],
+    "empresa_arrendataria": "empresa que figura como arrendataria (quien toma el campo en arriendo). Si dice 'Diego Ricardo Quintana' o similar devolvé 'diego_quintana'. Si dice 'El Ataco' o similar devolvé 'el_ataco'. Si no podés determinarlo devolvé null.",
+    "fecha_inicio": "YYYY-MM-DD",
+    "fecha_fin": "YYYY-MM-DD",
+    "hectareas_totales": 0,
+    "qq_por_hectarea": "quintales por hectárea por año pactados. IMPORTANTE: si el contrato establece valores DISTINTOS para cada año (ej: año 1: 8 qq/ha, año 2: 8.5 qq/ha, año 3: 9 qq/ha), devolvé el PROMEDIO simple (en ese ejemplo 8.5). Si todos los años son iguales, devolvé ese único valor. Solo un número (puede tener decimales), sin comas. Null si no aparece.",
+    "qq_totales_anual": 0,
+    "grano": "tipo de grano principal (Soja/Maíz/Trigo/Girasol/Sorgo)",
+    "campo_nombre": "nombre del campo o establecimiento",
+    "ubicacion": "ciudad, localidad o zona donde está el campo (ej: Villa Ascasubi, Córdoba)",
+    "renspa_numero": "número de RENSPA si aparece",
+    "adelanto_qq": "cantidad de quintales que el contrato indica pagar por adelantado. Buscá cláusulas como 'se abonará por adelantado', 'el 50% antes de', 'mitad a la firma', 'adelanto de X qq', etc. Si no se menciona un pago adelantado, devolvé null. Si es un porcentaje del total, calculá la cantidad de qq en base al total anual. Solo un número, sin comas.",
+    "adelanto_dia": "día del mes (1-31) en que vence el pago adelantado cada año. Null si no hay adelanto o no hay fecha concreta.",
+    "adelanto_mes": "mes (1-12) en que vence el pago adelantado cada año. Null si no hay adelanto o no hay fecha concreta.",
+    "adelanto_observaciones": "texto corto describiendo las condiciones del adelanto, tal como aparecen en el contrato (ej: '50% según cláusula 5, para la siembra'). Null si no hay adelanto.",
+    "fracciones": [
+        {
+            "denominacion_catastral": "denominación catastral",
+            "nro_cuenta": "número de cuenta",
+            "hectareas": 0,
+            "porcentaje_titularidad": 100
+        }
+    ],
+    "clausulas": [
+        {
+            "tipo": "cultivos_permitidos|malezas|subarrendar|inspeccion|impuestos|otra",
+            "descripcion": "resumen de la cláusula"
+        }
+    ]
+}`;
+
+    const codigosReintento = [429, 500, 502, 503, 504, 529];
+    let ultimoError = null;
+
+    // 3 intentos con backoff (1s, 2s, 4s)
+    for (let intento = 1; intento <= 3; intento++) {
+        try {
+            if (intento > 1) {
+                actualizarEstadoGemini(`Reintentando con Claude (${intento}/3)...`, 'warning');
+            }
+
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-5',
+                    max_tokens: 8192,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'document',
+                                source: {
+                                    type: 'base64',
+                                    media_type: 'application/pdf',
+                                    data: pdfBase64
+                                }
+                            },
+                            { type: 'text', text: prompt }
+                        ]
+                    }]
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const err = new Error(errorData.error?.message || `Error HTTP ${response.status}`);
+                err.status = response.status;
+                throw err;
+            }
+
+            const result = await response.json();
+            const texto = result.content?.[0]?.text;
+            if (!texto) {
+                console.error('Respuesta completa de Claude:', JSON.stringify(result, null, 2));
+                throw new Error('Claude no devolvió una respuesta válida.');
+            }
+
+            let jsonStr = texto.trim();
+            if (jsonStr.startsWith('```')) {
+                jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```\s*$/g, '').trim();
+            }
+            try {
+                return JSON.parse(jsonStr);
+            } catch (e) {
+                console.error('Error parseando JSON de Claude. JSON completo:', jsonStr);
+                throw new Error('La respuesta de Claude no es un JSON válido.');
+            }
+        } catch (err) {
+            ultimoError = err;
+            console.warn(`[Claude] Falló intento ${intento}/3:`, err.status || '', err.message);
+
+            const esTransitorio = codigosReintento.includes(err.status);
+            if (!esTransitorio) break;
+            if (intento < 3) {
+                await dormir(1000 * Math.pow(2, intento - 1));
+            }
+        }
+    }
+
+    throw ultimoError || new Error('No se pudo extraer el contrato con Claude.');
+}
+
+/**
  * Auto-completa los campos del formulario con los datos extraídos.
  * Si el arrendador no existe en la base de datos, lo crea automáticamente.
  */
@@ -1525,6 +1803,49 @@ async function autocompletarFormulario(datos) {
         if (!nombreGrupoEditadoManualmente) actualizarNombreGrupoAuto();
     }
 
+    // ---- Representantes legales (extraídos por la IA) ----
+    if (Array.isArray(datos.representantes) && datos.representantes.length > 0) {
+        for (const r of datos.representantes) {
+            if (!r || !r.nombre_completo) continue;
+
+            // Buscar a qué empresa-arrendador del contrato corresponde por nombre
+            const nombreEmpresa = (r.empresa_nombre || '').toLowerCase().trim();
+            let idxEmpresa = -1;
+            if (nombreEmpresa) {
+                idxEmpresa = arrendadoresContrato.findIndex(a =>
+                    a.tipo === 'empresa' &&
+                    (a.nombre_completo || '').toLowerCase().trim() === nombreEmpresa
+                );
+            }
+            // Fallback: si no matcheó por nombre, asociar a la primera empresa del contrato
+            if (idxEmpresa < 0) {
+                idxEmpresa = arrendadoresContrato.findIndex(a => a.tipo === 'empresa');
+            }
+            if (idxEmpresa < 0) continue;  // no hay empresa-arrendador, no se puede atar
+
+            // Evitar duplicados dentro del contrato (por DNI o nombre+empresa)
+            const dniNorm = normalizarDni(r.dni);
+            const yaCargado = representantesContrato.some(x =>
+                (dniNorm && normalizarDni(x.dni) === dniNorm && x.empresa_idx === idxEmpresa) ||
+                (!dniNorm && (x.nombre_completo || '').toLowerCase().trim() === (r.nombre_completo || '').toLowerCase().trim() && x.empresa_idx === idxEmpresa)
+            );
+            if (yaCargado) continue;
+
+            representantesContrato.push({
+                empresa_idx:    idxEmpresa,
+                nombre_completo: r.nombre_completo,
+                dni:            r.dni  || '',
+                cuit:           r.cuit || '',
+                cargo:          r.cargo|| '',
+                desde:          '',
+                hasta:          '',
+                notas:          '',
+                _existente:     false
+            });
+        }
+        renderRepresentantes();
+    }
+
     // ---- Campo / ubicación ----
     const ubicacion = datos.ubicacion || datos.campo_nombre || null;
     if (ubicacion) {
@@ -1560,6 +1881,12 @@ async function autocompletarFormulario(datos) {
     if (datos.qq_totales_anual) {
         const campo = document.getElementById('campo-qq');
         if (campo) campo.value = datos.qq_totales_anual;
+    }
+
+    // QQ por hectárea (promedio entre años si varía)
+    if (datos.qq_por_hectarea) {
+        const campo = document.getElementById('campo-qq-por-ha');
+        if (campo) campo.value = datos.qq_por_hectarea;
     }
 
     // Grano
@@ -1632,6 +1959,33 @@ async function autocompletarFormulario(datos) {
     }
 }
 
+/**
+ * Recalcula automáticamente los totales anuales (blanco y negro) a partir
+ * de hectáreas × qq/ha. Se dispara al editar hectáreas, qq por hectárea (blanco)
+ * o qq por hectárea (negro). NO toca los totales si hay que invalidar
+ * (cuando los inputs base están vacíos).
+ *
+ * Política: si cambia hectáreas o qq/ha, el total se sobreescribe con el cálculo.
+ * El usuario puede aún tipear directo en el total, y eso queda preservado mientras
+ * no toque hectáreas/qq/ha de nuevo.
+ */
+function recalcularQQAnual() {
+    const ha    = parseFloat(document.getElementById('campo-hectareas')?.value || 0);
+    const qqHaB = parseFloat(document.getElementById('campo-qq-por-ha')?.value || 0);
+    const qqHaN = parseFloat(document.getElementById('campo-qq-negro-por-ha')?.value || 0);
+
+    if (ha > 0 && qqHaB > 0) {
+        const total = Math.round(ha * qqHaB * 100) / 100;
+        const campo = document.getElementById('campo-qq');
+        if (campo) campo.value = total;
+    }
+    if (ha > 0 && qqHaN > 0) {
+        const total = Math.round(ha * qqHaN * 100) / 100;
+        const campo = document.getElementById('campo-qq-negro');
+        if (campo) campo.value = total;
+    }
+}
+
 // ==============================================
 // GUARDAR — Crear o actualizar contrato
 // ==============================================
@@ -1643,6 +1997,8 @@ async function guardarContrato() {
     const fechaFin = ddmmAISO(document.getElementById('campo-fecha-fin')?.value);
     const hectareas = document.getElementById('campo-hectareas')?.value;
     const qqPactados = document.getElementById('campo-qq')?.value;
+    const qqPorHa = document.getElementById('campo-qq-por-ha')?.value;
+    const qqNegroPorHa = document.getElementById('campo-qq-negro-por-ha')?.value;
     const qqNegroAnual = document.getElementById('campo-qq-negro')?.value;
     const grano = document.getElementById('campo-grano')?.value;
     const tipo = document.getElementById('campo-tipo')?.value;
@@ -1773,6 +2129,8 @@ async function guardarContrato() {
         fecha_fin: fechaFin,
         hectareas: hectareas ? parseFloat(hectareas) : null,
         qq_pactados_anual: parseFloat(qqPactados),
+        qq_por_hectarea: qqPorHa ? parseFloat(qqPorHa) : null,
+        qq_negro_por_hectarea: qqNegroPorHa ? parseFloat(qqNegroPorHa) : null,
         qq_negro_anual: qqNegroAnual ? parseFloat(qqNegroAnual) : 0,
         grano: grano || null,
         tipo: tipo || 'arrendamiento',
@@ -1835,6 +2193,55 @@ async function guardarContrato() {
     await guardarClausulas(contratoId);
 
     // --------------------------------------------------------------
+    // Paso 4.5: sincronizar tabla representantes
+    //  Cada item del array está atado a un arrendador (por empresa_idx).
+    //  Como ya insertamos los arrendadores y tienen sus IDs, ahora podemos
+    //  resolver el empresa_id real y hacer upsert/insert.
+    //  Estrategia: borrar los representantes que ya no están + insertar los nuevos
+    //  + actualizar los existentes.
+    // --------------------------------------------------------------
+    const idsAEliminar = [...representantesOriginalIds].filter(idOrig =>
+        !representantesContrato.some(r => r.id === idOrig)
+    );
+    if (idsAEliminar.length > 0) {
+        await ejecutarConsulta(
+            db.from('representantes').delete().in('id', idsAEliminar),
+            'eliminar representantes ya no vigentes'
+        );
+    }
+
+    for (const r of representantesContrato) {
+        // Resolver empresa_id desde el índice del arrendador
+        const empresaArr = arrendadoresContrato[r.empresa_idx];
+        if (!empresaArr || !empresaArr.id) continue;
+        if (!r.nombre_completo || !r.nombre_completo.trim()) continue;  // ignorar vacíos
+
+        const datosRep = {
+            empresa_id:      empresaArr.id,
+            nombre_completo: r.nombre_completo.trim(),
+            dni:             (r.dni  || '').trim() || null,
+            cuit:            (r.cuit || '').trim() || null,
+            cargo:           (r.cargo|| '').trim() || null,
+            desde:           r.desde || null,
+            hasta:           r.hasta || null,
+            notas:           r.notas || null,
+            creado_por:      window.__USUARIO__?.id || null
+        };
+
+        if (r.id) {
+            await ejecutarConsulta(
+                db.from('representantes').update(datosRep).eq('id', r.id),
+                'actualizar representante'
+            );
+        } else {
+            await ejecutarConsulta(
+                db.from('representantes').insert(datosRep),
+                'insertar representante'
+            );
+        }
+    }
+
+    // --------------------------------------------------------------
     // Paso 5: inicializar / ajustar saldo (ahora por contrato)
     // --------------------------------------------------------------
     if (campanaId) {
@@ -1861,6 +2268,8 @@ async function guardarContrato() {
     archivoPDFSeleccionado = null;
     arrendadoresContrato = [];
     arrendadoresOriginalIds = new Set();
+    representantesContrato = [];
+    representantesOriginalIds = new Set();
     nombreGrupoEditadoManualmente = false;
     await cargarContratos();
 }
@@ -2079,8 +2488,20 @@ async function verContrato(id) {
                 <span class="contrato-detalle-valor"><strong>${contrato.hectareas ? contrato.hectareas + ' ha' : '—'}</strong></span>
             </div>
             <div class="contrato-detalle-item">
-                <span class="contrato-detalle-label">Quintales pactados/año</span>
+                <span class="contrato-detalle-label">Quintales pactados/año (blanco)</span>
                 <span class="contrato-detalle-valor"><strong>${formatearQQ(contrato.qq_pactados_anual)}</strong></span>
+            </div>
+            <div class="contrato-detalle-item">
+                <span class="contrato-detalle-label">Quintales por hectárea (blanco)</span>
+                <span class="contrato-detalle-valor"><strong>${contrato.qq_por_hectarea ? Number(contrato.qq_por_hectarea).toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' qq/ha' : '—'}</strong></span>
+            </div>
+            <div class="contrato-detalle-item">
+                <span class="contrato-detalle-label">Quintales adicionales/año (negro)</span>
+                <span class="contrato-detalle-valor"><strong>${contrato.qq_negro_anual && Number(contrato.qq_negro_anual) > 0 ? formatearQQ(contrato.qq_negro_anual) : '—'}</strong></span>
+            </div>
+            <div class="contrato-detalle-item">
+                <span class="contrato-detalle-label">Quintales por hectárea (negro)</span>
+                <span class="contrato-detalle-valor"><strong>${contrato.qq_negro_por_hectarea ? Number(contrato.qq_negro_por_hectarea).toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' qq/ha' : '—'}</strong></span>
             </div>
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Grano</span>
@@ -2109,16 +2530,33 @@ async function verContrato(id) {
                     if (!a) return '';
                     const tipoLabel = a.tipo === 'empresa' ? 'Empresa' : 'Persona';
                     const id = a.cuit ? `CUIT ${a.cuit}` : (a.dni ? `DNI ${a.dni}` : '');
+                    const reps = (a._representantes || []);
+                    const repsHTML = reps.length > 0 ? `
+                        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--color-borde);font-size:var(--texto-xs);color:var(--color-dorado);">
+                            👤 Representada por:
+                            <ul style="margin:4px 0 0 18px;padding:0;color:var(--color-texto);">
+                                ${reps.map(r => `
+                                    <li>
+                                        <strong>${r.nombre_completo}</strong>${r.cargo ? ` <span style="color:var(--color-texto-tenue);">(${r.cargo})</span>` : ''}
+                                        ${r.dni ? `<span style="color:var(--color-texto-tenue);"> · DNI ${r.dni}</span>` : ''}
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    ` : '';
                     return `
-                        <div style="display: flex; align-items: center; gap: var(--espacio-sm); padding: var(--espacio-sm) var(--espacio-md); background-color: var(--color-fondo-secundario); border-radius: var(--radio-md); border: 1px solid var(--color-borde);">
-                            ${v.es_titular_principal ? '<span style="color: var(--color-acento); font-size: var(--texto-md);" title="Titular principal">★</span>' : ''}
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600;">${a.nombre || '—'}</div>
-                                <div style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">
-                                    ${tipoLabel}${id ? ' · ' + id : ''}
+                        <div style="display: flex; flex-direction:column; gap: 4px; padding: var(--espacio-sm) var(--espacio-md); background-color: var(--color-fondo-secundario); border-radius: var(--radio-md); border: 1px solid var(--color-borde);">
+                            <div style="display:flex; align-items:center; gap: var(--espacio-sm);">
+                                ${v.es_titular_principal ? '<span style="color: var(--color-acento); font-size: var(--texto-md);" title="Titular principal">★</span>' : ''}
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600;">${a.nombre || '—'}</div>
+                                    <div style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">
+                                        ${tipoLabel}${id ? ' · ' + id : ''}
+                                    </div>
                                 </div>
+                                ${v.es_titular_principal ? '<span class="badge badge-amarillo">Titular</span>' : ''}
                             </div>
-                            ${v.es_titular_principal ? '<span class="badge badge-amarillo">Titular</span>' : ''}
+                            ${repsHTML}
                         </div>
                     `;
                 }).join('')}
@@ -2416,8 +2854,130 @@ function quitarArrendadorChip(idx) {
     if (a.es_titular_principal && arrendadoresContrato.length > 0) {
         arrendadoresContrato[0].es_titular_principal = true;
     }
+    // Re-mapear los empresa_idx de los representantes (los índices se corrieron)
+    representantesContrato = representantesContrato.filter(r => r.empresa_idx !== idx);
+    representantesContrato.forEach(r => { if (r.empresa_idx > idx) r.empresa_idx--; });
     renderChipsArrendadores();
+    renderRepresentantes();
     if (!nombreGrupoEditadoManualmente) actualizarNombreGrupoAuto();
+}
+
+// ==============================================
+// REPRESENTANTES — UI dentro del modal de contrato
+// ==============================================
+
+/**
+ * Renderiza la lista de representantes y oculta la sección entera
+ * si no hay ningún arrendador empresa en el contrato.
+ */
+function renderRepresentantes() {
+    const bloque = document.getElementById('bloque-representantes');
+    const cont   = document.getElementById('representantes-lista');
+    if (!bloque || !cont) return;
+
+    // Empresas-arrendador del contrato (índices y nombres)
+    const empresas = arrendadoresContrato
+        .map((a, i) => ({ idx: i, nombre: a.nombre_completo, tipo: a.tipo }))
+        .filter(e => e.tipo === 'empresa');
+
+    // Si no hay empresas, ocultar todo el bloque y limpiar lista
+    if (empresas.length === 0) {
+        bloque.style.display = 'none';
+        cont.innerHTML = '';
+        representantesContrato = [];
+        return;
+    }
+    bloque.style.display = 'block';
+
+    if (representantesContrato.length === 0) {
+        cont.innerHTML = `<div style="padding:var(--espacio-sm) var(--espacio-md);background:var(--color-fondo-secundario);border-radius:var(--radio-md);color:var(--color-texto-tenue);font-size:var(--texto-sm);margin-bottom:var(--espacio-sm);">
+            Sin representantes cargados. Tocá "Agregar representante" para sumar uno.
+        </div>`;
+        return;
+    }
+
+    const opcionesEmpresas = (selectedIdx) => empresas.map(e =>
+        `<option value="${e.idx}" ${selectedIdx === e.idx ? 'selected' : ''}>${e.nombre}</option>`
+    ).join('');
+
+    cont.innerHTML = representantesContrato.map((r, i) => `
+        <div style="border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md);margin-bottom:var(--espacio-sm);background:var(--color-fondo-tarjeta);">
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">Empresa que representa <span class="campo-requerido">*</span></label>
+                    <select class="campo-select" onchange="actualizarRepresentante(${i}, 'empresa_idx', parseInt(this.value, 10))">
+                        ${opcionesEmpresas(r.empresa_idx)}
+                    </select>
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Cargo</label>
+                    <input type="text" class="campo-input" value="${r.cargo || ''}"
+                        placeholder="Presidenta, Apoderado, Socio gerente..."
+                        oninput="actualizarRepresentante(${i}, 'cargo', this.value)">
+                </div>
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">Nombre completo <span class="campo-requerido">*</span></label>
+                <input type="text" class="campo-input" value="${r.nombre_completo || ''}"
+                    placeholder="Hilda Rosa Grosso"
+                    oninput="actualizarRepresentante(${i}, 'nombre_completo', this.value)">
+            </div>
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">DNI</label>
+                    <input type="text" class="campo-input" value="${r.dni || ''}"
+                        placeholder="13456913 (sin puntos)"
+                        oninput="actualizarRepresentante(${i}, 'dni', this.value)">
+                    <span class="campo-ayuda">Si en el futuro firma un contrato propio, el sistema la reconoce por DNI.</span>
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">CUIT</label>
+                    <input type="text" class="campo-input" value="${r.cuit || ''}"
+                        placeholder="XX-XXXXXXXX-X"
+                        oninput="actualizarRepresentante(${i}, 'cuit', this.value)">
+                </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:var(--espacio-xs);">
+                <button type="button" class="btn-secundario" style="color:var(--color-error);border-color:var(--color-error);padding:4px 12px;font-size:var(--texto-xs);" onclick="quitarRepresentante(${i})">Quitar</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function agregarRepresentante() {
+    // Buscar primer índice de empresa-arrendador
+    const idxEmpresa = arrendadoresContrato.findIndex(a => a.tipo === 'empresa');
+    if (idxEmpresa < 0) {
+        mostrarAlerta('Primero agregá un arrendador de tipo empresa para asociarle representantes.');
+        return;
+    }
+    representantesContrato.push({
+        empresa_idx:    idxEmpresa,
+        nombre_completo:'',
+        dni:            '',
+        cuit:           '',
+        cargo:          '',
+        desde:          '',
+        hasta:          '',
+        notas:          '',
+        _existente:     false
+    });
+    renderRepresentantes();
+}
+
+function actualizarRepresentante(idx, campo, valor) {
+    const r = representantesContrato[idx];
+    if (!r) return;
+    r[campo] = valor;
+}
+
+function quitarRepresentante(idx) {
+    const r = representantesContrato[idx];
+    if (!r) return;
+    const label = r.nombre_completo || 'este representante';
+    if (!confirm(`¿Quitar a "${label}"?`)) return;
+    representantesContrato.splice(idx, 1);
+    renderRepresentantes();
 }
 
 /**
@@ -2638,6 +3198,7 @@ function confirmarNuevoArrendador(idxEditando) {
 
     cancelarNuevoArrendador();
     renderChipsArrendadores();
+    renderRepresentantes();
     if (!nombreGrupoEditadoManualmente) actualizarNombreGrupoAuto();
 }
 

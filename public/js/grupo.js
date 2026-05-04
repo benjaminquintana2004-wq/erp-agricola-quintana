@@ -58,6 +58,44 @@ async function cargarFichaGrupo(ids, usuario) {
         return;
     }
 
+    // Cargar representantes para los miembros que sean empresa
+    const idsEmpresas = miembros.filter(m => m.tipo === 'empresa').map(m => m.id);
+    const representantesPorEmpresa = {};
+    if (idsEmpresas.length > 0) {
+        const reps = await ejecutarConsulta(
+            db.from('representantes').select('*').in('empresa_id', idsEmpresas),
+            'cargar representantes del grupo'
+        ) || [];
+        reps.forEach(r => {
+            (representantesPorEmpresa[r.empresa_id] ||= []).push(r);
+        });
+    }
+
+    // Auto-match inverso: si algún miembro persona_fisica tiene DNI que matchea
+    // con un representante en la BD, mostrar las empresas que representa.
+    const dnisPersonas = miembros
+        .filter(m => m.tipo !== 'empresa' && m.dni)
+        .map(m => normalizarDniLocal(m.dni))
+        .filter(Boolean);
+    const empresasRepresentadasPorPersona = {};   // dni → [{empresa, cargo}]
+    if (dnisPersonas.length > 0) {
+        const repsMatching = await ejecutarConsulta(
+            db.from('representantes')
+                .select('id, empresa_id, dni, cargo, nombre_completo, arrendadores!representantes_empresa_id_fkey ( id, nombre, cuit )')
+                .in('dni', dnisPersonas),
+            'buscar empresas representadas por miembros'
+        ) || [];
+        // Excluir representaciones de empresas que YA están en este mismo grupo
+        // (ahí se ven igual en la sección de Representantes legales).
+        const idsEmpresasDelGrupo = new Set(idsEmpresas);
+        repsMatching.forEach(r => {
+            if (!r.dni) return;
+            if (idsEmpresasDelGrupo.has(r.empresa_id)) return;
+            const dniN = normalizarDniLocal(r.dni);
+            (empresasRepresentadasPorPersona[dniN] ||= []).push(r);
+        });
+    }
+
     // Filtrar contratos cuyo SET de arrendadores coincida exactamente con `idsOrden`
     const claveBuscada = idsOrden.join('|');
     const contratosDelGrupo = (contratos || []).filter(c => {
@@ -115,6 +153,8 @@ async function cargarFichaGrupo(ids, usuario) {
         ${renderTotales(qqB, qqN, contratosDelGrupo, hoy)}
         ${renderNotasGrupo(notasGrupo)}
         ${renderMiembros(miembros, contratosDelGrupo, puedeEditar)}
+        ${renderRepresentantesGrupo(miembros, representantesPorEmpresa)}
+        ${renderEmpresasRepresentadas(miembros, empresasRepresentadasPorPersona)}
         ${renderContratos(contratosDelGrupo, saldoPorContrato, hoy)}
         ${renderMovimientos(movsDelGrupo, arrPorId)}
     `;
@@ -318,6 +358,129 @@ function renderMiembros(miembros, contratos, puedeEditar) {
                     <tbody>${filas}</tbody>
                 </table>
             </div>
+        </div>
+    `;
+}
+
+/**
+ * Normaliza un DNI sacándole puntos, guiones y espacios.
+ * Devuelve string vacío si no hay nada útil.
+ */
+function normalizarDniLocal(dni) {
+    if (!dni) return '';
+    return String(dni).replace(/[.\s\-]/g, '').trim();
+}
+
+/**
+ * Sección "También representa a..." — para personas-arrendador del grupo
+ * cuyo DNI matchea con un representante en la BD (de una empresa que NO
+ * está en este mismo grupo).
+ */
+function renderEmpresasRepresentadas(miembros, empresasRepresentadasPorPersona) {
+    const personas = miembros.filter(m => m.tipo !== 'empresa' && m.dni);
+    const filas = [];
+    personas.forEach(p => {
+        const dniN = normalizarDniLocal(p.dni);
+        const reps = empresasRepresentadasPorPersona[dniN] || [];
+        reps.forEach(r => {
+            const empresa = r.arrendadores;
+            if (!empresa) return;
+            filas.push({ persona: p, empresa, cargo: r.cargo });
+        });
+    });
+    if (filas.length === 0) return '';
+
+    const html = filas.map(({ persona, empresa, cargo }) => {
+        const cargoTxt = cargo ? `<span class="badge badge-gris" style="margin-left:6px;">${cargo}</span>` : '';
+        const idDoc = empresa.cuit ? `CUIT ${empresa.cuit}` : '';
+        return `
+            <tr>
+                <td>${persona.nombre}</td>
+                <td>
+                    <a href="/grupo.html?ids=${empresa.id}" style="color: var(--color-dorado); font-weight: 600;">
+                        🏢 ${empresa.nombre}
+                    </a>
+                    ${cargoTxt}
+                    ${idDoc ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${idDoc}</span>` : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="ficha-seccion">
+            <h2 class="ficha-seccion-titulo">También representa a</h2>
+            <p style="font-size: var(--texto-xs); color: var(--color-texto-tenue); margin: 0 0 var(--espacio-md) 0;">
+                Empresas en las que algún miembro de este grupo figura como representante legal (matcheo automático por DNI).
+            </p>
+            <div class="tabla-contenedor" style="overflow-x:auto;">
+                <table class="tabla">
+                    <thead>
+                        <tr>
+                            <th>Persona</th>
+                            <th>Empresa que representa</th>
+                        </tr>
+                    </thead>
+                    <tbody>${html}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Sección "Representantes legales" — solo aparece si en el grupo hay
+ * al menos una empresa con representantes cargados.
+ */
+function renderRepresentantesGrupo(miembros, representantesPorEmpresa) {
+    const empresasConReps = miembros
+        .filter(m => m.tipo === 'empresa' && (representantesPorEmpresa[m.id] || []).length > 0);
+
+    if (empresasConReps.length === 0) return '';
+
+    const bloques = empresasConReps.map(empresa => {
+        const reps = representantesPorEmpresa[empresa.id] || [];
+        const filas = reps.map(r => {
+            const idDoc = r.cuit ? `CUIT ${r.cuit}` : (r.dni ? `DNI ${r.dni}` : '—');
+            const cargo = r.cargo ? `<span class="badge badge-gris" style="margin-left:6px;">${r.cargo}</span>` : '';
+            return `
+                <tr>
+                    <td><strong>${r.nombre_completo}</strong>${cargo}</td>
+                    <td>${idDoc}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // Si hay más de una empresa en el grupo, mostramos el nombre de la empresa como subtítulo
+        const subtitulo = empresasConReps.length > 1
+            ? `<h3 style="font-size: var(--texto-sm); color: var(--color-dorado); margin: 0 0 var(--espacio-xs) 0;">${empresa.nombre}</h3>`
+            : '';
+
+        return `
+            <div style="margin-bottom: var(--espacio-md);">
+                ${subtitulo}
+                <div class="tabla-contenedor" style="overflow-x:auto;">
+                    <table class="tabla">
+                        <thead>
+                            <tr>
+                                <th>Nombre y cargo</th>
+                                <th>CUIT / DNI</th>
+                            </tr>
+                        </thead>
+                        <tbody>${filas}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="ficha-seccion">
+            <h2 class="ficha-seccion-titulo">Representantes legales</h2>
+            <p style="font-size: var(--texto-xs); color: var(--color-texto-tenue); margin: 0 0 var(--espacio-md) 0;">
+                Personas que firman en nombre de la empresa.
+            </p>
+            ${bloques}
         </div>
     `;
 }

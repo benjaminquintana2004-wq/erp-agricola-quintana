@@ -231,6 +231,55 @@ async function crearLayout(titulo, subtitulo, accionesHTML = '') {
  * @param {string} contenidoHTML - HTML del cuerpo del modal
  * @param {string} footerHTML - HTML de los botones del footer
  */
+/**
+ * Popup chico que pregunta al usuario con qué IA extraer un PDF.
+ * Se renderiza por encima de cualquier modal existente sin cerrarlo
+ * (z-index alto, no toca el DOM del modal abajo).
+ *
+ * Devuelve una Promise que resuelve a:
+ *   'gemini' | 'claude' | 'sin' | null (cancelado)
+ */
+function elegirIA() {
+    return new Promise((resolve) => {
+        const id = 'chooser-ia-popup';
+        document.getElementById(id)?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = id;
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:var(--espacio-md);';
+        overlay.innerHTML = `
+            <div style="background:var(--color-fondo-tarjeta);border:1px solid var(--color-borde);border-radius:var(--radio-lg);padding:var(--espacio-lg);max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+                <h3 style="margin:0 0 var(--espacio-xs) 0;color:var(--color-texto);font-size:var(--texto-lg);">Elegí con qué IA extraer</h3>
+                <p style="margin:0 0 var(--espacio-md) 0;font-size:var(--texto-sm);color:var(--color-texto-tenue);">
+                    Ambas leen el PDF y devuelven los datos. Si una está saturada o lee mal, probá la otra.
+                </p>
+                <div style="display:flex;flex-direction:column;gap:var(--espacio-sm);">
+                    <button class="btn-primario" data-ia="gemini" style="display:flex;align-items:center;justify-content:space-between;padding:var(--espacio-md);text-align:left;">
+                        <span><strong>Gemini</strong> <span style="opacity:0.7;font-size:var(--texto-xs);">(Google · gratis)</span></span>
+                        <span style="opacity:0.6;">→</span>
+                    </button>
+                    <button class="btn-primario" data-ia="claude" style="display:flex;align-items:center;justify-content:space-between;padding:var(--espacio-md);text-align:left;">
+                        <span><strong>Claude</strong> <span style="opacity:0.7;font-size:var(--texto-xs);">(Anthropic · pago)</span></span>
+                        <span style="opacity:0.6;">→</span>
+                    </button>
+                    <button class="btn-secundario" data-ia="sin" style="padding:var(--espacio-sm);">Sin IA (cargar datos a mano)</button>
+                    <button class="btn-secundario" data-ia="cancelar" style="padding:var(--espacio-sm);opacity:0.7;">Cancelar</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-ia]');
+            if (!btn) return;
+            const eleccion = btn.dataset.ia;
+            overlay.remove();
+            resolve(eleccion === 'cancelar' ? null : eleccion);
+        });
+    });
+}
+
 function abrirModal(titulo, contenidoHTML, footerHTML = '') {
     // Cerrar modal anterior si existe
     cerrarModal();
