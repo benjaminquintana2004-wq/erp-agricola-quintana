@@ -28,6 +28,17 @@ let chequeEditandoId    = null;
 //              // si tipo='existente':
 //              factura_id, archivo_url }
 let facturasPendientesNuevas = [];
+
+// Bulk de cheques (carga simultánea de varios con datos comunes).
+// Cada item: { tempId, numero, fecha_cobro, monto, qq }
+let chequesBulk = [];
+
+// Estado del modal de e-cheques (PDF parseado por IA).
+// echecksDetectados: cada item { numero, fecha_emision, fecha_cobro, monto }
+// echeqMetadata: { cuenta_libradora, beneficiario_nombre, beneficiario_cuit, cuentaMatchId? }
+let echecksDetectados = [];
+let echeqMetadata = null;
+let echeqFileSeleccionado = null;   // PDF en memoria mientras no se procesa
 let prestamoEditandoId  = null;
 
 // Cheque cuyo detalle está abierto (para refrescar sección de facturas al modificar)
@@ -47,9 +58,9 @@ async function cargarTesoreria() {
         ejecutarConsulta(db.from('cuentas_bancarias').select('*, empresas(nombre)').order('alias'), 'cargar cuentas'),
         ejecutarConsulta(db.from('categorias_gasto').select('*').eq('activa', true).order('nombre'), 'cargar categorías'),
         ejecutarConsulta(db.from('beneficiarios').select('*, contratistas(nombre), empleados(nombre), arrendadores(nombre)').order('nombre'), 'cargar beneficiarios'),
-        ejecutarConsulta(db.from('contratistas').select('id, nombre, especialidad').order('nombre'), 'cargar contratistas'),
-        ejecutarConsulta(db.from('empleados').select('id, nombre, rol').eq('activo', true).order('nombre'), 'cargar empleados'),
-        ejecutarConsulta(db.from('arrendadores').select('id, nombre').eq('activo', true).order('nombre'), 'cargar arrendadores'),
+        ejecutarConsulta(db.from('contratistas').select('id, nombre, especialidad, cuit').order('nombre'), 'cargar contratistas'),
+        ejecutarConsulta(db.from('empleados').select('id, nombre, rol, cuit:cuil').eq('activo', true).order('nombre'), 'cargar empleados'),
+        ejecutarConsulta(db.from('arrendadores').select('id, nombre, cuit').eq('activo', true).order('nombre'), 'cargar arrendadores'),
         ejecutarConsulta(
             db.from('movimientos_tesoreria')
                 .select('*, empresas(nombre), cuentas_bancarias(alias, moneda), beneficiarios(nombre, tipo), categorias_gasto(nombre), empleado_entrega:empleados!empleado_entrega_id(id, nombre)')
@@ -420,9 +431,7 @@ function renderizarTimeline() {
 
     for (let i = 0; i < 10; i++) {
         baldes.push(baldeActual);
-        const next = new Date(baldeActual + 'T12:00:00');
-        next.setDate(next.getDate() + 5);
-        baldeActual = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+        baldeActual = siguienteBalde(baldeActual);
     }
 
     // Proyección acumulada — parte del saldo disponible hoy
@@ -646,7 +655,9 @@ function renderizarMovimientos() {
 
     const filas = filtrados.map(m => {
         const badgeTipo = m.tipo === 'cheque'
-            ? `<span class="badge badge-cheque">Cheque</span>`
+            ? (m.es_echeck
+                ? `<span class="badge badge-azul">📱 E-Cheq</span>`
+                : `<span class="badge badge-cheque">Cheque</span>`)
             : `<span class="badge badge-transferencia">Transf.</span>`;
         const badgeEstado =
             m.estado === 'futuro'    ? `<span class="badge badge-futuro">Futuro</span>` :
@@ -831,11 +842,15 @@ function abrirModalCheque(datos = {}, opciones = {}) {
                 </div>
                 <!-- Contratista -->
                 <div class="campo-grupo" id="ben-grupo-contratista" style="${tipoPresel !== 'contratista' ? 'display:none' : ''}">
-                    <label class="campo-label">Contratista</label>
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:var(--espacio-sm);">
+                        <label class="campo-label" style="margin:0;">Contratista</label>
+                        <button type="button" onclick="togglePanelNuevoContratista()" style="background:none;border:none;color:var(--color-dorado);font-size:var(--texto-xs);cursor:pointer;padding:0;font-weight:600;">+ Nuevo</button>
+                    </div>
                     <select id="ben-contratista" class="campo-select">
                         <option value="">Seleccionar...</option>
                         ${opcionesContr}
                     </select>
+                    ${renderizarPanelNuevoContratista()}
                 </div>
                 <!-- Empleado -->
                 <div class="campo-grupo" id="ben-grupo-empleado" style="${tipoPresel !== 'empleado' ? 'display:none' : ''}">
@@ -901,9 +916,9 @@ function abrirModalCheque(datos = {}, opciones = {}) {
 
         <div class="campo-grupo">
             <label class="campo-label">Monto (ARS) <span class="campo-requerido">*</span></label>
-            <input type="number" id="campo-monto" class="campo-input"
-                value="${datos.monto || ''}"
-                placeholder="Monto en pesos" step="0.01" min="0.01">
+            <input type="text" data-monto id="campo-monto" class="campo-input"
+                value="${formatearMontoInput(datos.monto)}"
+                placeholder="Monto en pesos">
             <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">Siempre en pesos argentinos — no hay cheques en dólares.</div>
         </div>
 
@@ -986,14 +1001,9 @@ function actualizarHintBalde(fechaStr) {
 
 // Sugiere las fechas válidas más cercanas
 function obtenerFechasBalde(fechaStr) {
-    const fecha = new Date(fechaStr + 'T12:00:00');
-    const dia = fecha.getDate();
-    const resto = dia % 5;
-    const anterior = new Date(fecha);
-    anterior.setDate(dia - resto);
-    const siguiente = new Date(anterior);
-    siguiente.setDate(anterior.getDate() + 5);
-    return `${formatearFecha(fechaALocalStr(anterior))} o ${formatearFecha(fechaALocalStr(siguiente))}`;
+    const anteriorStr  = calcularFechaBaldeJS(fechaStr);
+    const siguienteStr = siguienteBalde(anteriorStr);
+    return `${formatearFecha(anteriorStr)} o ${formatearFecha(siguienteStr)}`;
 }
 
 // ==============================================
@@ -1203,7 +1213,7 @@ function verDetalleCheque(id) {
     const contenido = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--espacio-lg);">
             <div>
-                <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-texto-secundario);margin-bottom:var(--espacio-xs);text-transform:uppercase;letter-spacing:0.05em;">CHEQUE</div>
+                <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-texto-secundario);margin-bottom:var(--espacio-xs);text-transform:uppercase;letter-spacing:0.05em;">${m.es_echeck ? '📱 E-CHEQUE' : 'CHEQUE'}</div>
                 ${fila('Nro. cheque', `<span style="font-family:var(--fuente-mono);">${m.numero_cheque || '—'}</span>`)}
                 ${fila('Cuenta', cuenta?.alias || cuenta?.banco || '—')}
                 ${fila('F. emisión', m.fecha_emision ? formatearFecha(m.fecha_emision) : '—')}
@@ -1230,11 +1240,28 @@ function verDetalleCheque(id) {
     const puedeEditar = ['admin_total', 'admin'].includes(window.__USUARIO__?.rol);
     const footer = `
         <button class="btn-secundario" onclick="cerrarModal()">Cerrar</button>
+        ${m.es_echeck && m.pdf_url ? `<button class="btn-secundario" onclick="verPDFEcheck('${m.pdf_url}')">Ver PDF</button>` : ''}
         ${puedeEditar && m.estado === 'anulado' ? `<button class="btn-secundario" style="color:var(--color-verde);border-color:var(--color-verde);" onclick="reactivarCheque('${m.id}')">Reactivar</button>` : ''}
         ${puedeEditar ? `<button class="btn-primario" onclick="cerrarModal(); editarMovimiento('${m.id}')">Editar</button>` : ''}
     `;
 
     abrirModal('Detalle del movimiento', contenido, footer);
+}
+
+/**
+ * Abre el PDF del e-cheque en una pestaña nueva (signed URL de 5 minutos).
+ */
+async function verPDFEcheck(path) {
+    if (!path) return;
+    try {
+        const { data, error } = await db.storage
+            .from('echecks')
+            .createSignedUrl(path, 300);
+        if (error || !data?.signedUrl) throw new Error(error?.message || 'No se pudo generar el link.');
+        window.open(data.signedUrl, '_blank');
+    } catch (err) {
+        mostrarError('No se pudo abrir el PDF: ' + err.message);
+    }
 }
 
 /**
@@ -1285,33 +1312,96 @@ function renderizarSeccionFacturasCheque(m, soloLectura = false) {
         `;
     }
 
-    // Aviso de inconsistencia: chequeamos cada factura contra la suma
-    // de TODOS los cheques vinculados a ella (no solo este).
-    // Solo avisamos si tenemos monto_total cargado (si es null no podemos comparar).
-    const inconsistentes = facturas.filter(f =>
-        Number(f.monto_total || 0) > 0 &&
-        Math.abs(Number(f.monto_total) - Number(f._total_cheques || 0)) > 1
-    );
+    // Aviso de inconsistencia entre montos.
+    // Estrategia general: armar el "cluster" de facturas y cheques relacionados
+    // entre sí, y comparar sum(facturas del cluster) vs sum(cheques del cluster).
+    // Esto cubre:
+    //   - 1 cheque ↔ N facturas
+    //   - 1 factura ↔ N cheques
+    //   - N cheques ↔ M facturas (M:N completo)
+    // Si el cluster cuadra, no avisamos. Si no cuadra y los cheques son los mismos
+    // para todas las facturas, mostramos un mensaje sumarizado. Si las facturas
+    // están cubiertas por sub-conjuntos distintos, caemos al chequeo individual.
+    const facturasConMonto = facturas.filter(f => Number(f.monto_total || 0) > 0);
 
     let avisoMonto = '';
-    if (inconsistentes.length > 0) {
-        const detalles = inconsistentes.map(f => {
-            const cantCheques = (f._cheques_ids || []).length;
-            const chequeTxt = cantCheques === 1 ? '1 cheque' : `${cantCheques} cheques`;
-            return `<li>Factura ${f.numero || '(sin nº)'}: $ ${formatearNumero(f.monto_total)} — cubierta por ${chequeTxt} por un total de $ ${formatearNumero(f._total_cheques || 0)}</li>`;
-        }).join('');
+    if (facturasConMonto.length > 0) {
+        // Reunir todos los cheques que cubren al menos una de estas facturas
+        const clusterChequeIds = new Set();
+        facturasConMonto.forEach(f => (f._cheques_ids || []).forEach(id => clusterChequeIds.add(id)));
 
-        avisoMonto = `
-            <div style="margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:rgba(232,183,74,0.10);border:1px solid #e8b74a;border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:#e8b74a;">
-                <div style="display:flex;align-items:flex-start;gap:var(--espacio-xs);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    <div>
-                        <div style="font-weight:600;margin-bottom:4px;">Atención: monto no cuadra</div>
-                        <ul style="margin:0;padding-left:16px;">${detalles}</ul>
+        // ¿Todas las facturas están cubiertas por exactamente el mismo set de cheques?
+        const todasMismoSet = facturasConMonto.every(f => {
+            const ids = f._cheques_ids || [];
+            return ids.length === clusterChequeIds.size && ids.every(id => clusterChequeIds.has(id));
+        });
+
+        if (todasMismoSet) {
+            // Caso unificado: el set de cheques cubre el set de facturas.
+            // Sumamos ambos lados y comparamos.
+            const sumaFact = facturasConMonto.reduce((s, f) => s + Number(f.monto_total), 0);
+            const sumaCheq = [...clusterChequeIds].reduce((s, id) => {
+                const ch = movimientosTesoreria.find(x => x.id === id);
+                return s + Number(ch?.monto || 0);
+            }, 0);
+            const diferencia = sumaFact - sumaCheq;
+            const nF = facturasConMonto.length;
+            const nC = clusterChequeIds.size;
+            const cuadra = sumaCheq > 0 && Math.abs(diferencia) <= 1;
+
+            if (cuadra) {
+                // Resumen informativo verde (cuando cuadra)
+                avisoMonto = `
+                    <div style="margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:rgba(74,158,110,0.10);border:1px solid var(--color-verde);border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:var(--color-verde);">
+                        <div style="display:flex;align-items:flex-start;gap:var(--espacio-xs);">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"><polyline points="20 6 9 17 4 12"/></svg>
+                            <div>
+                                <div style="font-weight:600;margin-bottom:4px;">Montos cuadran</div>
+                                <div>${nF} factura${nF !== 1 ? 's' : ''} por <strong>$ ${formatearNumero(sumaFact)}</strong> · ${nC} cheque${nC !== 1 ? 's' : ''} por <strong>$ ${formatearNumero(sumaCheq)}</strong></div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
-        `;
+                `;
+            } else if (sumaCheq > 0) {
+                // Aviso amarillo (cuando no cuadra)
+                avisoMonto = `
+                    <div style="margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:rgba(232,183,74,0.10);border:1px solid #e8b74a;border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:#e8b74a;">
+                        <div style="display:flex;align-items:flex-start;gap:var(--espacio-xs);">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <div>
+                                <div style="font-weight:600;margin-bottom:4px;">Atención: monto no cuadra</div>
+                                <div>${nF} factura${nF !== 1 ? 's' : ''} por <strong>$ ${formatearNumero(sumaFact)}</strong> · ${nC} cheque${nC !== 1 ? 's' : ''} por <strong>$ ${formatearNumero(sumaCheq)}</strong></div>
+                                <div style="margin-top:2px;">Diferencia: $ ${formatearNumero(Math.abs(diferencia))} ${diferencia > 0 ? '(las facturas superan)' : '(los cheques superan)'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            // Caso heterogéneo: las facturas están cubiertas por sub-conjuntos
+            // distintos de cheques. Mostramos chequeo individual.
+            const inconsistentes = facturasConMonto.filter(f =>
+                Math.abs(Number(f.monto_total) - Number(f._total_cheques || 0)) > 1
+            );
+            if (inconsistentes.length > 0) {
+                const detalles = inconsistentes.map(f => {
+                    const cantCheques = (f._cheques_ids || []).length;
+                    const chequeTxt = cantCheques === 1 ? '1 cheque' : `${cantCheques} cheques`;
+                    return `<li>Factura ${f.numero || '(sin nº)'}: $ ${formatearNumero(f.monto_total)} — cubierta por ${chequeTxt} por un total de $ ${formatearNumero(f._total_cheques || 0)}</li>`;
+                }).join('');
+                avisoMonto = `
+                    <div style="margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:rgba(232,183,74,0.10);border:1px solid #e8b74a;border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:#e8b74a;">
+                        <div style="display:flex;align-items:flex-start;gap:var(--espacio-xs);">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <div>
+                                <div style="font-weight:600;margin-bottom:4px;">Atención: monto no cuadra (facturas compartidas)</div>
+                                <ul style="margin:0;padding-left:16px;">${detalles}</ul>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
     }
 
     const filasFact = facturas.map(f => {
@@ -2115,8 +2205,8 @@ async function abrirModalEditarFactura(facturaId) {
         </div>
         <div class="campo-grupo">
             <label class="campo-label">Monto total</label>
-            <input type="number" id="edit-fact-monto" class="campo-input"
-                value="${f.monto_total || ''}" placeholder="Monto total de la factura" step="0.01" min="0">
+            <input type="text" data-monto id="edit-fact-monto" class="campo-input"
+                value="${formatearMontoInput(f.monto_total)}" placeholder="Monto total de la factura">
         </div>
         <div style="margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:var(--color-fondo-secundario);border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:var(--color-texto-tenue);">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -2137,8 +2227,7 @@ async function guardarEdicionFactura(facturaId, chequeId) {
     const fecha      = ddmmAISO(document.getElementById('edit-fact-fecha')?.value);
     const emisorNom  = document.getElementById('edit-fact-emisor-nom')?.value.trim() || null;
     const emisorCuit = document.getElementById('edit-fact-emisor-cuit')?.value.trim() || null;
-    const montoStr   = document.getElementById('edit-fact-monto')?.value;
-    const monto      = (montoStr && montoStr !== '') ? parseFloat(montoStr) : null;
+    const monto      = parseMontoInput(document.getElementById('edit-fact-monto')?.value);
 
     const { error } = await db.from('facturas')
         .update({
@@ -2172,7 +2261,7 @@ async function guardarCheque() {
     const nroCheque  = document.getElementById('campo-nro-cheque')?.value.trim();
     const fechaEmis  = ddmmAISO(document.getElementById('campo-fecha-emision')?.value);
     const fechaCobro = ddmmAISO(document.getElementById('campo-fecha-cobro')?.value);
-    const monto      = document.getElementById('campo-monto')?.value;
+    const monto      = parseMontoInput(document.getElementById('campo-monto')?.value);
 
     if (!cuentaId)   { mostrarError('Seleccioná la cuenta bancaria.'); return; }
     if (!nroCheque)  { mostrarError('El número de cheque es obligatorio.'); return; }
@@ -2371,6 +2460,1443 @@ async function guardarCheque() {
 
     cerrarModal();
     chequeEditandoId = null;
+    await cargarTesoreria();
+}
+
+// ==============================================
+// BULK — CARGA SIMULTÁNEA DE VARIOS CHEQUES
+// Datos comunes + N cheques con su Nº/fecha/monto (y QQ si es arrendador).
+// Las facturas se vinculan automáticamente a TODOS los cheques creados.
+// ==============================================
+
+function abrirModalChequesBulk() {
+    chequeEditandoId = null;
+    chequesBulk = [
+        { tempId: 'b_' + Math.random().toString(36).slice(2), numero: '', fecha_cobro: '', monto: '', qq: '' }
+    ];
+    facturasPendientesNuevas = [];
+
+    const cuentasEmpresa = cuentas.filter(c =>
+        c.empresa_id === empresaActivaId && c.moneda === 'ARS' && c.activa
+    );
+    const opcionesCuentas = cuentasEmpresa.map(c =>
+        `<option value="${c.id}">${c.alias || c.banco}</option>`
+    ).join('');
+
+    const opcionesCat  = categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    const opcionesContr = contratistasTesoreria.map(c =>
+        `<option value="${c.id}">${c.nombre}${c.especialidad ? ' — ' + c.especialidad : ''}</option>`
+    ).join('');
+    const opcionesEmpl  = empleadosTesoreria.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+    const opcionesArr   = arrendadoresTesoreria.map(a => `<option value="${a.id}">${a.nombre}</option>`).join('');
+
+    const hoyLocal = new Date();
+    const hoy = `${hoyLocal.getFullYear()}-${String(hoyLocal.getMonth()+1).padStart(2,'0')}-${String(hoyLocal.getDate()).padStart(2,'0')}`;
+
+    const contenido = `
+        <div class="campos-fila">
+            <div class="campo-grupo">
+                <label class="campo-label">Cuenta bancaria <span class="campo-requerido">*</span></label>
+                <select id="bulk-cuenta" class="campo-select">
+                    <option value="">Seleccionar...</option>
+                    ${opcionesCuentas}
+                </select>
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">Fecha de emisión <span class="campo-requerido">*</span></label>
+                <input type="text" data-fecha id="bulk-fecha-emision" class="campo-input"
+                    value="${isoADDMM(hoy)}" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
+            </div>
+        </div>
+
+        <!-- ── Beneficiario inline (mismos IDs que el modal de un solo cheque) ── -->
+        <div style="border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md);margin-bottom:var(--espacio-md);">
+            <div style="font-size:var(--texto-sm);font-weight:600;color:var(--color-texto-secundario);margin-bottom:var(--espacio-sm);">BENEFICIARIO (compartido)</div>
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">Tipo</label>
+                    <select id="ben-tipo" class="campo-select" onchange="actualizarFormBeneficiarioBulk(this.value)">
+                        <option value="contratista" selected>Contratista</option>
+                        <option value="empleado">Empleado</option>
+                        <option value="arrendador">Arrendador</option>
+                        <option value="otro">Otro</option>
+                    </select>
+                </div>
+                <div class="campo-grupo" id="ben-grupo-contratista">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:var(--espacio-sm);">
+                        <label class="campo-label" style="margin:0;">Contratista</label>
+                        <button type="button" onclick="togglePanelNuevoContratista()" style="background:none;border:none;color:var(--color-dorado);font-size:var(--texto-xs);cursor:pointer;padding:0;font-weight:600;">+ Nuevo</button>
+                    </div>
+                    <select id="ben-contratista" class="campo-select">
+                        <option value="">Seleccionar...</option>${opcionesContr}
+                    </select>
+                    ${renderizarPanelNuevoContratista()}
+                </div>
+                <div class="campo-grupo" id="ben-grupo-empleado" style="display:none;">
+                    <label class="campo-label">Empleado</label>
+                    <select id="ben-empleado" class="campo-select">
+                        <option value="">Seleccionar...</option>${opcionesEmpl}
+                    </select>
+                </div>
+                <div class="campo-grupo" id="ben-grupo-arrendador" style="display:none;">
+                    <label class="campo-label">Arrendador</label>
+                    <select id="ben-arrendador" class="campo-select">
+                        <option value="">Seleccionar...</option>${opcionesArr}
+                    </select>
+                </div>
+            </div>
+            <div id="ben-grupo-otro" style="display:none;">
+                <div class="campos-fila">
+                    <div class="campo-grupo">
+                        <label class="campo-label">Nombre / Razón social</label>
+                        <input type="text" id="ben-otro-nombre" class="campo-input" placeholder="Ej: Agro Servicios SRL">
+                    </div>
+                    <div class="campo-grupo">
+                        <label class="campo-label">CUIT (opcional)</label>
+                        <input type="text" id="ben-otro-cuit" class="campo-input" placeholder="Ej: 20-12345678-9">
+                    </div>
+                </div>
+            </div>
+            <!-- Para arrendadores: tipo blanco/negro (los QQ se cargan por cheque más abajo) -->
+            <div id="bulk-arrendador-tipo-wrap" style="display:none;margin-top:var(--espacio-sm);">
+                <div class="campo-grupo">
+                    <label class="campo-label">Tipo (blanco/negro)</label>
+                    <select id="bulk-arrendador-tipo" class="campo-select">
+                        <option value="blanco">Blanco (con factura)</option>
+                        <option value="negro">Negro (sin factura)</option>
+                    </select>
+                    <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">Aplica a todos los cheques. Los QQ se cargan por cheque abajo.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="campos-fila">
+            <div class="campo-grupo">
+                <label class="campo-label">Categoría</label>
+                <select id="bulk-categoria" class="campo-select">
+                    <option value="">Seleccionar...</option>${opcionesCat}
+                </select>
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">Entregado por</label>
+                <select id="bulk-empleado-entrega" class="campo-select">
+                    <option value="">— Sin especificar —</option>
+                    ${empleadosTesoreria.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+
+        <div class="campo-grupo">
+            <label class="campo-label">Notas</label>
+            <input type="text" id="bulk-notas" class="campo-input"
+                placeholder="Observaciones opcionales (se aplican a todos los cheques)">
+            <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">Esta nota se copia idéntica en cada uno de los cheques del lote.</div>
+        </div>
+
+        <hr class="form-separador">
+
+        <!-- ── Cheques (filas dinámicas) ── -->
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:var(--espacio-sm);margin-bottom:var(--espacio-sm);">
+            <div class="form-seccion-titulo" style="margin:0;">Cheques <span id="bulk-contador" style="font-weight:400;color:var(--color-texto-tenue);font-size:var(--texto-sm);"></span></div>
+            <div style="font-size:var(--texto-sm);color:var(--color-dorado);font-weight:600;" id="bulk-total">Total: $ 0</div>
+        </div>
+
+        <!-- Helpers de auto-rellenado (solo visibles con 2+ cheques) -->
+        <div id="bulk-helpers" style="padding:var(--espacio-sm);background:var(--color-fondo-secundario);border-radius:var(--radio-sm,4px);margin-bottom:var(--espacio-sm);display:none;">
+            <div class="campo-label" style="font-size:var(--texto-xs);margin-bottom:var(--espacio-sm);">Auto-escalonar fechas de cobro</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:var(--espacio-sm);padding-bottom:var(--espacio-sm);border-bottom:1px solid var(--color-borde);">
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">El día</span>
+                <input type="number" id="bulk-dia-mes" class="campo-input" value="30" min="1" max="31" style="width:60px;padding:4px 8px;">
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">de cada mes a partir de</span>
+                <select id="bulk-mes-inicio" class="campo-select" style="width:auto;padding:4px 8px;font-size:var(--texto-xs);">
+                    ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+                        .map((m, i) => `<option value="${i+1}" ${i === new Date().getMonth() ? 'selected' : ''}>${m}</option>`).join('')}
+                </select>
+                <select id="bulk-ano-inicio" class="campo-select" style="width:auto;padding:4px 8px;font-size:var(--texto-xs);">
+                    ${(() => {
+                        const y = new Date().getFullYear();
+                        return [y-1, y, y+1, y+2].map(a => `<option value="${a}" ${a === y ? 'selected' : ''}>${a}</option>`).join('');
+                    })()}
+                </select>
+                <button type="button" class="btn-secundario" onclick="autoEscalonarFechasPorDiaMes()" style="padding:4px 10px;font-size:var(--texto-xs);margin-left:auto;">Aplicar</button>
+            </div>
+
+            <!-- Auto-rellenar monto en todos los cheques -->
+            <div class="campo-label" style="font-size:var(--texto-xs);margin-bottom:var(--espacio-sm);">Auto-rellenar monto en todos los cheques</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">Monto:</span>
+                <input type="text" id="bulk-monto-comun" data-monto class="campo-input" placeholder="Ej: 1.500.000" style="flex:1;min-width:140px;padding:4px 8px;">
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">ARS — se aplica a todas las filas</span>
+                <button type="button" class="btn-secundario" onclick="autoRellenarMontoBulk()" style="padding:4px 10px;font-size:var(--texto-xs);margin-left:auto;">Aplicar</button>
+            </div>
+
+            <div style="margin-top:var(--espacio-sm);padding-top:var(--espacio-sm);border-top:1px solid var(--color-borde);font-size:var(--texto-xs);color:var(--color-texto-tenue);">
+                💡 <strong>Tip:</strong> los números de cheque se autocompletan consecutivos al tipear el primero (ej: 47700970 → 47700971, 47700972...). Editá cualquier fila para sobreescribir manualmente.
+            </div>
+        </div>
+
+        <div id="bulk-filas"></div>
+
+        <div style="display:inline-flex;align-items:center;gap:6px;margin-top:var(--espacio-sm);font-size:var(--texto-xs);color:var(--color-texto-tenue);">
+            <span>Cheques a agregar:</span>
+            <input type="number" id="bulk-cantidad-agregar" value="1" min="1" max="50"
+                style="width:55px;padding:3px 6px;background-color:#0f0e0c;border:1px solid var(--color-borde);border-radius:var(--radio-sm,4px);color:var(--color-texto);font-size:var(--texto-xs);text-align:center;">
+            <button type="button" class="btn-secundario" onclick="agregarVariosChequesBulk()" style="padding:3px 10px;font-size:var(--texto-xs);">
+                Aplicar
+            </button>
+        </div>
+
+        <hr class="form-separador">
+
+        <div class="form-seccion-titulo">Facturas <span style="font-weight:400;color:var(--color-texto-tenue);font-size:var(--texto-xs);">(compartidas — se vinculan a TODOS los cheques)</span></div>
+        <div id="bloque-facturas-pendientes">
+            ${renderizarSeccionFacturasPendientes()}
+        </div>
+    `;
+
+    const footer = `
+        <button class="btn-secundario" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn-primario" onclick="guardarChequesBulk()" id="btn-guardar-bulk">Registrar cheques</button>
+    `;
+
+    abrirModal('Cargar cheque', contenido, footer);
+    renderFilasChequesBulk();
+}
+
+/**
+ * Variante para el bulk modal: igual que actualizarFormBeneficiario pero
+ * NO muestra el QQ inline (porque QQ va por cheque). En su lugar muestra
+ * el selector blanco/negro común a todos los cheques.
+ */
+function actualizarFormBeneficiarioBulk(tipo) {
+    document.getElementById('ben-grupo-contratista').style.display = tipo === 'contratista' ? '' : 'none';
+    document.getElementById('ben-grupo-empleado').style.display    = tipo === 'empleado'    ? '' : 'none';
+    document.getElementById('ben-grupo-arrendador').style.display  = tipo === 'arrendador'  ? '' : 'none';
+    document.getElementById('ben-grupo-otro').style.display        = tipo === 'otro'        ? '' : 'none';
+    const wrapBN = document.getElementById('bulk-arrendador-tipo-wrap');
+    if (wrapBN) wrapBN.style.display = tipo === 'arrendador' ? '' : 'none';
+    // Re-renderizar las filas para mostrar/ocultar la columna QQ
+    renderFilasChequesBulk();
+}
+
+function renderFilasChequesBulk() {
+    const cont = document.getElementById('bulk-filas');
+    if (!cont) return;
+
+    // Antes de pintar: si el primer cheque tiene un número y los siguientes
+    // están vacíos, los autocompletamos con números consecutivos.
+    autoIncrementarNumerosCheques();
+
+    // Mostrar/ocultar helpers según la cantidad de cheques
+    // Con 1 sola fila los helpers no aportan nada y agregan ruido visual.
+    const helpers = document.getElementById('bulk-helpers');
+    if (helpers) helpers.style.display = chequesBulk.length >= 2 ? 'block' : 'none';
+
+    const tipoBen = document.getElementById('ben-tipo')?.value;
+    const mostrarQQ = tipoBen === 'arrendador';
+
+    // Detectar números duplicados (mismo nro no vacío más de una vez)
+    const conteoNumeros = {};
+    chequesBulk.forEach(c => {
+        const n = (c.numero || '').trim();
+        if (n) conteoNumeros[n] = (conteoNumeros[n] || 0) + 1;
+    });
+
+    cont.innerHTML = chequesBulk.map((c, i) => {
+        const dup = (c.numero || '').trim() && conteoNumeros[c.numero.trim()] > 1;
+        const estiloDup = dup ? 'border-color:var(--color-error);' : '';
+        return `
+            <div style="border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-sm) var(--espacio-md);margin-bottom:var(--espacio-sm);background:var(--color-fondo-tarjeta);${estiloDup}">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--espacio-xs);">
+                    <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-texto-secundario);">Cheque #${i + 1}${dup ? ' <span style="color:var(--color-error);">⚠ Nº duplicado</span>' : ''}</div>
+                    ${chequesBulk.length > 1 ? `<button type="button" class="btn-secundario" style="padding:2px 8px;font-size:var(--texto-xs);color:var(--color-error);border-color:var(--color-error);" onclick="quitarFilaChequeBulk(${i})">Quitar</button>` : ''}
+                </div>
+                <div class="campos-fila">
+                    <div class="campo-grupo">
+                        <label class="campo-label">Nº de cheque <span class="campo-requerido">*</span></label>
+                        <input type="text" class="campo-input" value="${c.numero || ''}"
+                            placeholder="Ej: 00012345"
+                            oninput="actualizarFilaChequeBulk(${i}, 'numero', this.value)"
+                            onchange="renderFilasChequesBulk()">
+                    </div>
+                    <div class="campo-grupo">
+                        <label class="campo-label">Fecha de cobro <span class="campo-requerido">*</span></label>
+                        <input type="text" data-fecha class="campo-input" value="${isoADDMM(c.fecha_cobro)}"
+                            placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10"
+                            oninput="actualizarFilaChequeBulk(${i}, 'fecha_cobro', ddmmAISO(this.value))">
+                    </div>
+                    <div class="campo-grupo">
+                        <label class="campo-label">Monto (ARS) <span class="campo-requerido">*</span></label>
+                        <input type="text" data-monto class="campo-input" value="${formatearMontoInput(c.monto)}"
+                            placeholder="0"
+                            oninput="actualizarFilaChequeBulk(${i}, 'monto', parseMontoInput(this.value)); actualizarTotalBulk();">
+                    </div>
+                    ${mostrarQQ ? `
+                        <div class="campo-grupo">
+                            <label class="campo-label">QQ <span class="campo-requerido">*</span></label>
+                            <input type="number" class="campo-input" value="${c.qq || ''}"
+                                placeholder="Ej: 140" step="0.01" min="0.01"
+                                oninput="actualizarFilaChequeBulk(${i}, 'qq', this.value)">
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('bulk-contador').textContent = `(${chequesBulk.length})`;
+    actualizarTotalBulk();
+    // Re-activar máscaras en los inputs nuevos (fechas + montos)
+    if (typeof activarFechasDDMM === 'function') activarFechasDDMM(cont);
+    if (typeof activarFormatoMonto === 'function') activarFormatoMonto(cont);
+}
+
+function actualizarFilaChequeBulk(idx, campo, valor) {
+    const c = chequesBulk[idx];
+    if (!c) return;
+    c[campo] = valor;
+}
+
+function actualizarTotalBulk() {
+    const total = chequesBulk.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+    const el = document.getElementById('bulk-total');
+    if (el) el.textContent = `Total: $ ${formatearNumero(total)}`;
+}
+
+/**
+ * Agrega N filas vacías de una sola vez. El usuario elige el N en el input
+ * "Cheques a agregar" y toca "Aplicar". Si tipea un valor inválido, muestra
+ * error. Límite de 50 por accidente (ej: tipear 500 en lugar de 5).
+ */
+function agregarVariosChequesBulk() {
+    const input = document.getElementById('bulk-cantidad-agregar');
+    const n = parseInt(input?.value, 10);
+    if (!n || n < 1) {
+        mostrarError('Ingresá una cantidad válida (mínimo 1).');
+        return;
+    }
+    if (n > 50) {
+        mostrarError('Máximo 50 cheques a la vez. Si necesitás más, hacelo en dos pasos.');
+        return;
+    }
+    for (let i = 0; i < n; i++) {
+        chequesBulk.push({
+            tempId: 'b_' + Math.random().toString(36).slice(2),
+            numero: '', fecha_cobro: '', monto: '', qq: ''
+        });
+    }
+    renderFilasChequesBulk();
+    mostrarExito(`${n} cheques agregados.`);
+}
+
+function quitarFilaChequeBulk(idx) {
+    if (chequesBulk.length <= 1) return;
+    chequesBulk.splice(idx, 1);
+    renderFilasChequesBulk();
+}
+
+/**
+ * Auto-completa los números de cheque de las filas vacías con números
+ * consecutivos a partir del primero. Respeta los inputs manuales: si una
+ * fila ya tiene un número escrito, no se sobreescribe.
+ *
+ * Conserva el ancho del primer número con padding de ceros (ej: si el
+ * primero es "00012345", el siguiente será "00012346", no "12346").
+ *
+ * Solo funciona si el primer número es puramente numérico. Si trae letras
+ * o guiones, no autocompleta (mejor no adivinar formatos raros).
+ */
+function autoIncrementarNumerosCheques() {
+    if (chequesBulk.length < 2) return;
+    const primero = (chequesBulk[0]?.numero || '').trim();
+    if (!primero) return;
+    if (!/^\d+$/.test(primero)) return;   // solo si es numérico puro
+
+    const ancho   = primero.length;
+    const inicial = parseInt(primero, 10);
+    if (!Number.isFinite(inicial)) return;
+
+    for (let i = 1; i < chequesBulk.length; i++) {
+        const actual = (chequesBulk[i].numero || '').trim();
+        if (actual) continue;  // respetar valores escritos manualmente
+        chequesBulk[i].numero = String(inicial + i).padStart(ancho, '0');
+    }
+}
+
+/**
+ * Llena las fechas de cobro con el día X de cada mes, empezando en
+ * el mes/año seleccionado. Si el día no existe en algún mes (ej: 31 de
+ * febrero), usa el último día válido de ese mes.
+ *
+ * Ej: día 30, a partir de mayo 2026, 4 cheques →
+ *   30/05/2026, 30/06/2026, 30/07/2026, 30/08/2026
+ */
+function autoEscalonarFechasPorDiaMes() {
+    const dia = parseInt(document.getElementById('bulk-dia-mes')?.value, 10);
+    const mesInicio = parseInt(document.getElementById('bulk-mes-inicio')?.value, 10);
+    const anoInicio = parseInt(document.getElementById('bulk-ano-inicio')?.value, 10);
+
+    if (!dia || dia < 1 || dia > 31) {
+        mostrarError('Día inválido (debe ser entre 1 y 31).');
+        return;
+    }
+    if (!mesInicio || mesInicio < 1 || mesInicio > 12) {
+        mostrarError('Mes inválido.');
+        return;
+    }
+    if (!anoInicio || anoInicio < 2000 || anoInicio > 2100) {
+        mostrarError('Año inválido.');
+        return;
+    }
+
+    chequesBulk.forEach((c, i) => {
+        // mesInicio es 1-12. Sumamos i meses al mes de inicio.
+        const mesAbsoluto = mesInicio + i; // ej: mayo (5) + 0 = 5, mayo + 1 = 6 (junio)...
+        const yearFinal = anoInicio + Math.floor((mesAbsoluto - 1) / 12);
+        const monthFinal = ((mesAbsoluto - 1) % 12) + 1; // 1-12
+
+        // Último día del mes (manejo de 31/feb, etc.)
+        // new Date(year, monthFinal, 0) → día 0 del mes siguiente = último del actual
+        const ultDia = new Date(yearFinal, monthFinal, 0).getDate();
+        const diaFinal = Math.min(dia, ultDia);
+
+        c.fecha_cobro = `${yearFinal}-${String(monthFinal).padStart(2,'0')}-${String(diaFinal).padStart(2,'0')}`;
+    });
+    renderFilasChequesBulk();
+
+    const nombresMes = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    mostrarExito(`Fechas escalonadas el día ${dia} de cada mes desde ${nombresMes[mesInicio]} ${anoInicio}.`);
+}
+
+/**
+ * Rellena el mismo monto en todas las filas de cheques del bulk.
+ * Útil cuando todos los cheques del lote son por el mismo valor.
+ */
+function autoRellenarMontoBulk() {
+    const raw = document.getElementById('bulk-monto-comun')?.value || '';
+    const monto = parseMontoInput(raw);
+    if (!monto || monto <= 0) {
+        mostrarError('Ingresá un monto válido.');
+        return;
+    }
+    chequesBulk.forEach(c => { c.monto = monto; });
+    renderFilasChequesBulk();
+    actualizarTotalBulk();
+    mostrarExito(`Monto $ ${formatearNumero(monto)} aplicado a ${chequesBulk.length} cheque${chequesBulk.length !== 1 ? 's' : ''}.`);
+}
+
+/**
+ * Devuelve el id de beneficiario que corresponde al input.
+ * Si ya existe en `beneficiarios`, lo reusa; si no, lo crea en la BD.
+ * Inputs aceptados (uno de):
+ *   { tipo: 'contratista',  contratista_id }
+ *   { tipo: 'empleado',     empleado_id }
+ *   { tipo: 'arrendador',   arrendador_id }
+ *   { tipo: 'otro',         nombre, cuit? }
+ */
+async function obtenerOCrearBeneficiario(input) {
+    if (!input || !input.tipo) return null;
+    const { tipo } = input;
+
+    if (tipo === 'contratista') {
+        let b = beneficiarios.find(x => x.contratista_id === input.contratista_id);
+        if (!b) {
+            const c = contratistasTesoreria.find(x => x.id === input.contratista_id);
+            const r = await ejecutarConsulta(
+                db.from('beneficiarios').insert({
+                    nombre: c?.nombre || 'Contratista',
+                    tipo: 'contratista',
+                    contratista_id: input.contratista_id
+                }).select(),
+                'crear beneficiario contratista'
+            );
+            if (r?.[0]) { beneficiarios.push(r[0]); b = r[0]; }
+        }
+        return b?.id || null;
+    }
+    if (tipo === 'empleado') {
+        let b = beneficiarios.find(x => x.empleado_id === input.empleado_id);
+        if (!b) {
+            const e = empleadosTesoreria.find(x => x.id === input.empleado_id);
+            const r = await ejecutarConsulta(
+                db.from('beneficiarios').insert({
+                    nombre: e?.nombre || 'Empleado',
+                    tipo: 'empleado',
+                    empleado_id: input.empleado_id
+                }).select(),
+                'crear beneficiario empleado'
+            );
+            if (r?.[0]) { beneficiarios.push(r[0]); b = r[0]; }
+        }
+        return b?.id || null;
+    }
+    if (tipo === 'arrendador') {
+        let b = beneficiarios.find(x => x.arrendador_id === input.arrendador_id);
+        if (!b) {
+            const a = arrendadoresTesoreria.find(x => x.id === input.arrendador_id);
+            const r = await ejecutarConsulta(
+                db.from('beneficiarios').insert({
+                    nombre: a?.nombre || 'Arrendador',
+                    tipo: 'arrendador',
+                    arrendador_id: input.arrendador_id
+                }).select(),
+                'crear beneficiario arrendador'
+            );
+            if (r?.[0]) { beneficiarios.push(r[0]); b = r[0]; }
+        }
+        return b?.id || null;
+    }
+    if (tipo === 'otro') {
+        const nombre = (input.nombre || '').trim();
+        if (!nombre) return null;
+        let b = beneficiarios.find(x =>
+            x.tipo === 'otro' && x.nombre?.toLowerCase() === nombre.toLowerCase()
+        );
+        if (!b) {
+            const r = await ejecutarConsulta(
+                db.from('beneficiarios').insert({
+                    nombre,
+                    tipo: 'otro',
+                    cuit: input.cuit || null
+                }).select(),
+                'crear beneficiario otro'
+            );
+            if (r?.[0]) { beneficiarios.push(r[0]); b = r[0]; }
+        }
+        return b?.id || null;
+    }
+    return null;
+}
+
+async function guardarChequesBulk() {
+    // ── Validación de campos comunes ──
+    const cuentaId   = document.getElementById('bulk-cuenta')?.value;
+    const fechaEmis  = ddmmAISO(document.getElementById('bulk-fecha-emision')?.value);
+    const tipoBen    = document.getElementById('ben-tipo')?.value;
+    const categoriaId = document.getElementById('bulk-categoria')?.value || null;
+    const empleadoEntregaId = document.getElementById('bulk-empleado-entrega')?.value || null;
+    const notasComunes = document.getElementById('bulk-notas')?.value?.trim() || null;
+
+    if (!cuentaId)  { mostrarError('Seleccioná una cuenta bancaria.'); return; }
+    if (!fechaEmis) { mostrarError('Cargá la fecha de emisión.'); return; }
+
+    // Resolver beneficiario (mismo flujo que en cheque único)
+    let beneficiarioId = null;
+    let arrId = null;
+    let tipoArrBN = 'blanco';
+    if (tipoBen === 'contratista') {
+        const id = document.getElementById('ben-contratista')?.value;
+        if (!id) { mostrarError('Seleccioná un contratista.'); return; }
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'contratista', contratista_id: id });
+    } else if (tipoBen === 'empleado') {
+        const id = document.getElementById('ben-empleado')?.value;
+        if (!id) { mostrarError('Seleccioná un empleado.'); return; }
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'empleado', empleado_id: id });
+    } else if (tipoBen === 'arrendador') {
+        arrId = document.getElementById('ben-arrendador')?.value;
+        if (!arrId) { mostrarError('Seleccioná un arrendador.'); return; }
+        tipoArrBN = document.getElementById('bulk-arrendador-tipo')?.value || 'blanco';
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'arrendador', arrendador_id: arrId });
+    } else if (tipoBen === 'otro') {
+        const nombre = document.getElementById('ben-otro-nombre')?.value?.trim();
+        const cuit   = document.getElementById('ben-otro-cuit')?.value?.trim() || null;
+        if (!nombre) { mostrarError('Cargá el nombre del beneficiario.'); return; }
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'otro', nombre, cuit });
+    }
+    if (!beneficiarioId) return;
+
+    // ── Validación de cada cheque ──
+    const numerosVistos = new Set();
+    for (let i = 0; i < chequesBulk.length; i++) {
+        const c = chequesBulk[i];
+        const numero = (c.numero || '').trim();
+        if (!numero)       { mostrarError(`Cheque #${i + 1}: cargá el número.`); return; }
+        if (!c.fecha_cobro){ mostrarError(`Cheque #${i + 1}: cargá la fecha de cobro.`); return; }
+        const monto = parseFloat(c.monto);
+        if (!monto || monto <= 0) { mostrarError(`Cheque #${i + 1}: monto inválido.`); return; }
+        if (numerosVistos.has(numero)) { mostrarError(`El número de cheque "${numero}" está repetido en la lista.`); return; }
+        numerosVistos.add(numero);
+        if (tipoBen === 'arrendador') {
+            const qqVal = parseFloat(c.qq);
+            if (!qqVal || qqVal <= 0) { mostrarError(`Cheque #${i + 1}: cargá los QQ.`); return; }
+        }
+    }
+
+    // ── Insertar los N cheques ──
+    const btn = document.getElementById('btn-guardar-bulk');
+    if (btn) { btn.disabled = true; btn.textContent = 'Registrando...'; }
+
+    const hoyStr = fechaHoyStr();
+    const chequesCreados = [];   // ids para vincular facturas
+    const errores = [];
+
+    for (let i = 0; i < chequesBulk.length; i++) {
+        const c = chequesBulk[i];
+        const numero = (c.numero || '').trim();
+        const fechaCobro = c.fecha_cobro;
+        const monto = parseFloat(c.monto);
+        const estadoCalc = fechaCobro > hoyStr ? 'futuro' : 'pendiente';
+
+        const datos = {
+            empresa_id:         empresaActivaId,
+            cuenta_bancaria_id: cuentaId,
+            tipo:               'cheque',
+            numero_cheque:      numero,
+            fecha_emision:      fechaEmis,
+            fecha_cobro:        fechaCobro,
+            fecha_balde:        calcularFechaBaldeJS(fechaCobro),
+            beneficiario_id:    beneficiarioId,
+            categoria_id:       categoriaId,
+            monto:              monto,
+            notas:              notasComunes,
+            empleado_entrega_id: empleadoEntregaId,
+            origen:             'manual',
+            estado:             estadoCalc
+        };
+
+        const r = await ejecutarConsulta(
+            db.from('movimientos_tesoreria').insert(datos).select(),
+            `registrar cheque #${i + 1}`
+        );
+        if (r && r[0]) {
+            chequesCreados.push(r[0].id);
+
+            // Si es arrendador, registrar movimiento de QQ + descontar saldo
+            if (tipoBen === 'arrendador' && arrId) {
+                const qqVal = parseFloat(c.qq);
+                const precioQQ = monto / qqVal;
+                const movArr = await ejecutarConsulta(
+                    db.from('movimientos').insert({
+                        arrendador_id:  arrId,
+                        fecha:          fechaCobro,
+                        qq:             qqVal,
+                        precio_quintal: Math.round(precioQQ * 100) / 100,
+                        moneda:         'ARS',
+                        tipo:           tipoArrBN,
+                        estado_factura: 'sin_factura',
+                        observaciones:  `Pago mediante cheque N° ${numero}`,
+                        usuario_id:     window.__USUARIO__?.id || null
+                    }),
+                    'crear movimiento arrendamiento desde tesorería (bulk)'
+                );
+                if (movArr !== undefined) {
+                    await descontarQQArrendador(arrId, tipoArrBN, qqVal);
+                }
+            }
+        } else {
+            errores.push(`#${i + 1} (Nº ${numero})`);
+        }
+    }
+
+    // ── Procesar facturas comunes (1 sola subida, N vínculos) ──
+    let resumenFact = null;
+    if (chequesCreados.length > 0 && facturasPendientesNuevas.length > 0) {
+        resumenFact = await procesarFacturasPendientesParaChequesBulk(chequesCreados, empresaActivaId);
+    }
+
+    // ── Mensaje final ──
+    const nOK = chequesCreados.length;
+    const nFail = errores.length;
+    let msg = '';
+    if (nFail === 0) {
+        msg = `${nOK} cheque${nOK !== 1 ? 's' : ''} registrado${nOK !== 1 ? 's' : ''}`;
+        if (resumenFact && resumenFact.exitos > 0) {
+            msg += ` con ${resumenFact.exitos} factura${resumenFact.exitos !== 1 ? 's' : ''} vinculada${resumenFact.exitos !== 1 ? 's' : ''} a todos`;
+        }
+        mostrarExito(msg + '.');
+    } else {
+        mostrarAlerta(`${nOK} registrado${nOK !== 1 ? 's' : ''}, ${nFail} fallaron: ${errores.join(', ')}. Probá editarlos a mano.`);
+    }
+
+    cerrarModal();
+    chequesBulk = [];
+    facturasPendientesNuevas = [];
+    await cargarTesoreria();
+}
+
+/**
+ * Variante de procesarFacturasPendientesParaCheque para el caso bulk:
+ * cada factura se sube/insertan UNA sola vez, pero el vínculo se crea
+ * para CADA chequeId en chequesIds.
+ */
+async function procesarFacturasPendientesParaChequesBulk(chequesIds, empresaId) {
+    let exitos = 0;
+    const errores = [];
+
+    for (const p of facturasPendientesNuevas) {
+        try {
+            let facturaId = null;
+
+            if (p.tipo === 'existente') {
+                facturaId = p.factura_id;
+            } else {
+                // tipo 'nueva' — dedup
+                if (p.numero) {
+                    const q = db.from('facturas').select('id').eq('numero', p.numero);
+                    const finalQ = p.emisor_cuit ? q.eq('emisor_cuit', p.emisor_cuit) : q.is('emisor_cuit', null);
+                    const { data: dups, error: errDup } = await finalQ;
+                    if (errDup) throw errDup;
+                    if (dups && dups.length > 0) facturaId = dups[0].id;
+                }
+
+                if (!facturaId) {
+                    // Subir archivo (path bajo el primer cheque por convención)
+                    const ext = (p.file.name.split('.').pop() || 'pdf').toLowerCase();
+                    const extOk = ['pdf', 'jpg', 'jpeg', 'png'].includes(ext) ? ext : 'pdf';
+                    const path = `${chequesIds[0]}/${Date.now()}.${extOk}`;
+                    const { error: upErr } = await db.storage
+                        .from('facturas-cheques')
+                        .upload(path, p.file, { upsert: false });
+                    if (upErr) throw upErr;
+
+                    const { data: nueva, error: insErr } = await db.from('facturas').insert({
+                        numero:        p.numero,
+                        fecha:         p.fecha,
+                        emisor_cuit:   p.emisor_cuit,
+                        emisor_nombre: p.emisor_nombre,
+                        monto_total:   p.monto_total,
+                        archivo_url:   path,
+                        empresa_id:    empresaId,
+                        creado_por:    window.__USUARIO__?.id || null
+                    }).select().single();
+                    if (insErr) {
+                        await db.storage.from('facturas-cheques').remove([path]);
+                        throw insErr;
+                    }
+                    facturaId = nueva.id;
+                }
+            }
+
+            // Crear N vínculos (uno por cheque). ON CONFLICT no se aplica porque
+            // los pares (cheque,factura) son únicos por PK compuesto y los chequesIds
+            // recién se crearon en este bulk → no debería haber duplicado.
+            const filas = chequesIds.map(cid => ({ cheque_id: cid, factura_id: facturaId }));
+            const { error: vincErr } = await db.from('cheques_facturas').insert(filas);
+            if (vincErr) throw vincErr;
+
+            exitos++;
+        } catch (err) {
+            console.error('Error procesando factura bulk:', err);
+            errores.push(p.numero || p.file?.name || 'sin nombre');
+        }
+    }
+
+    facturasPendientesNuevas = [];
+    return { exitos, errores };
+}
+
+// ==============================================
+// E-CHEQUES (cheques electrónicos)
+// Flujo: subir PDF del banco → IA extrae todo → preview editable → guardar.
+// Soporta múltiples e-cheques en un mismo PDF (Galicia, etc.).
+// ==============================================
+
+/**
+ * Prompt común para Gemini y Claude. Extrae uno o varios e-cheques de un PDF.
+ */
+function promptEcheqExtraccion() {
+    return `Analizá este PDF de e-cheques emitidos por un banco argentino (Galicia, Santander, Macro, BBVA, etc.) y extraé TODOS los e-cheques que aparezcan en la tabla. Puede haber uno solo o varios.
+
+Si un campo no aparece, poné null. No inventes datos. Los importes vienen con separadores de miles como "$ 5.272.393,50" — devolvelos como número (5272393.50).
+
+Formato de respuesta (solo JSON, sin markdown ni explicaciones):
+{
+    "cuenta_libradora": "número de cuenta libradora tal como aparece (ej: '00000190785'). Es común para todos los e-cheques del PDF.",
+    "beneficiario_nombre": "nombre o razón social del beneficiario al que se le emitieron los cheques (ej: 'LOGITRACK SAS'). Suele aparecer como 'Emitido a'.",
+    "beneficiario_cuit": "CUIT del beneficiario en formato XX-XXXXXXXX-X (con guiones). Si viene sin guiones (30718952499) reformatealo.",
+    "echecks": [
+        {
+            "numero": "número del e-cheque, ej '00000383'",
+            "fecha_emision": "YYYY-MM-DD",
+            "fecha_cobro": "YYYY-MM-DD (fecha de pago)",
+            "monto": número decimal sin separadores ni símbolos
+        }
+    ]
+}`;
+}
+
+async function llamarGeminiEcheq(apiKey, pdfBase64) {
+    const prompt = promptEcheqExtraccion();
+    const modelos = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const codigosReintento = [429, 500, 502, 503, 504];
+    let ultimoError = null;
+
+    for (let m = 0; m < modelos.length; m++) {
+        const modelo = modelos[m];
+        for (let intento = 1; intento <= 2; intento++) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                { inline_data: { mime_type: 'application/pdf', data: pdfBase64 } }
+                            ]
+                        }],
+                        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 }
+                    })
+                });
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    const err = new Error(errData.error?.message || `Error HTTP ${response.status}`);
+                    err.status = response.status;
+                    throw err;
+                }
+                const result = await response.json();
+                const parts = result.candidates?.[0]?.content?.parts || [];
+                let texto = null;
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    if (parts[i].text) { texto = parts[i].text; break; }
+                }
+                if (!texto) throw new Error('Gemini no devolvió respuesta.');
+                let jsonStr = texto.trim();
+                if (jsonStr.startsWith('```')) {
+                    jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```\s*$/g, '').trim();
+                }
+                return JSON.parse(jsonStr);
+            } catch (err) {
+                ultimoError = err;
+                if (!codigosReintento.includes(err.status)) break;
+                if (intento < 2) await new Promise(r => setTimeout(r, Math.pow(2, intento) * 1000));
+            }
+        }
+    }
+    throw ultimoError || new Error('No se pudo extraer el e-cheque con Gemini.');
+}
+
+async function llamarClaudeEcheq(apiKey, pdfBase64) {
+    const prompt = promptEcheqExtraccion();
+    const codigosReintento = [429, 500, 502, 503, 504, 529];
+    let ultimoError = null;
+
+    for (let intento = 1; intento <= 3; intento++) {
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-5',
+                    max_tokens: 4096,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+                            { type: 'text', text: prompt }
+                        ]
+                    }]
+                })
+            });
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                const err = new Error(errData.error?.message || `Error HTTP ${response.status}`);
+                err.status = response.status;
+                throw err;
+            }
+            const result = await response.json();
+            const texto = result.content?.[0]?.text;
+            if (!texto) throw new Error('Claude no devolvió respuesta.');
+            let jsonStr = texto.trim();
+            if (jsonStr.startsWith('```')) {
+                jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```\s*$/g, '').trim();
+            }
+            return JSON.parse(jsonStr);
+        } catch (err) {
+            ultimoError = err;
+            if (!codigosReintento.includes(err.status)) break;
+            if (intento < 3) await new Promise(r => setTimeout(r, Math.pow(2, intento - 1) * 1000));
+        }
+    }
+    throw ultimoError || new Error('No se pudo extraer el e-cheque con Claude.');
+}
+
+function abrirModalEcheck() {
+    chequeEditandoId = null;
+    echecksDetectados = [];
+    echeqMetadata = null;
+    echeqFileSeleccionado = null;
+    facturasPendientesNuevas = [];
+
+    abrirModal('Cargar e-cheque', renderContenidoEcheq(), renderFooterEcheq());
+    configurarDragDropEcheq();
+}
+
+/**
+ * Renderiza el contenido del modal según el estado.
+ * Estado 1: sin PDF → solo el área de upload.
+ * Estado 2: con PDF, sin scan → mostrar nombre + botones IA.
+ * Estado 3: scaneado → preview con datos editables.
+ */
+function renderContenidoEcheq() {
+    // Estado 3: ya hay datos extraídos → mostrar preview
+    if (echecksDetectados.length > 0) {
+        return renderEcheqFormulario();
+    }
+
+    // Estado 2: hay PDF pero sin scan → mostrar archivo + botones IA
+    if (echeqFileSeleccionado) {
+        return `
+            <div style="border:1px solid var(--color-verde);background:rgba(74,158,110,0.05);border-radius:var(--radio-md);padding:var(--espacio-md);margin-bottom:var(--espacio-md);">
+                <div style="display:flex;align-items:center;gap:var(--espacio-sm);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-verde)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;flex-shrink:0;">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;color:var(--color-texto);">${echeqFileSeleccionado.name}</div>
+                        <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${(echeqFileSeleccionado.size / 1024 / 1024).toFixed(2)} MB</div>
+                    </div>
+                    <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="quitarEcheqPDF()">Cambiar</button>
+                </div>
+            </div>
+            <div style="text-align:center;padding:var(--espacio-md);">
+                <p style="margin-bottom:var(--espacio-md);color:var(--color-texto-secundario);font-size:var(--texto-sm);">Elegí una IA para extraer los datos del e-cheque:</p>
+                <div style="display:flex;gap:var(--espacio-sm);justify-content:center;flex-wrap:wrap;">
+                    <button class="btn-primario" onclick="extraerEcheq('gemini')" title="Extraer con Gemini (Google · gratis)">✨ Extraer con Gemini</button>
+                    <button class="btn-primario" onclick="extraerEcheq('claude')" title="Extraer con Claude (Anthropic · pago)">✨ Extraer con Claude</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Estado 1: sin PDF
+    return `
+        <div id="echeq-drop-area" style="border:2px dashed var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-xl) var(--espacio-md);text-align:center;cursor:pointer;transition:background var(--transicion-rapida);" onclick="document.getElementById('echeq-input').click()">
+            <input type="file" id="echeq-input" accept=".pdf,application/pdf" style="display:none;" onchange="seleccionarEcheqPDF(this.files[0])">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:48px;height:48px;color:var(--color-dorado);margin-bottom:var(--espacio-sm);"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div style="font-weight:600;color:var(--color-texto);margin-bottom:4px;">Hacé click o arrastrá el PDF del e-cheque</div>
+            <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">Soporta PDFs de Galicia, Santander, Macro, BBVA, etc.<br>Puede contener uno o varios e-cheques.</div>
+        </div>
+    `;
+}
+
+function renderFooterEcheq() {
+    if (echecksDetectados.length === 0) {
+        return `<button class="btn-secundario" onclick="cerrarModal()">Cancelar</button>`;
+    }
+    const txt = echecksDetectados.length === 1 ? 'Registrar e-cheque' : `Registrar ${echecksDetectados.length} e-cheques`;
+    return `
+        <button class="btn-secundario" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn-primario" id="btn-guardar-echeq" onclick="guardarEchecks()">${txt}</button>
+    `;
+}
+
+function refrescarModalEcheq(titulo = 'Cargar e-cheque') {
+    // Re-render del cuerpo y footer sin cerrar el modal
+    const body = document.querySelector('.modal .modal-body');
+    const footer = document.querySelector('.modal .modal-footer');
+    if (body) body.innerHTML = renderContenidoEcheq();
+    if (footer) footer.innerHTML = renderFooterEcheq();
+    if (titulo) {
+        const t = document.querySelector('.modal-titulo');
+        if (t) t.textContent = titulo;
+    }
+    // Re-attach focus/blur de fechas y montos
+    if (typeof activarFechasDDMM === 'function') activarFechasDDMM(document.querySelector('.modal'));
+    if (typeof activarFormatoMonto === 'function') activarFormatoMonto(document.querySelector('.modal'));
+    configurarDragDropEcheq();
+}
+
+function configurarDragDropEcheq() {
+    const area = document.getElementById('echeq-drop-area');
+    if (!area) return;
+    area.addEventListener('dragover', e => { e.preventDefault(); area.style.background = 'rgba(201,168,76,0.08)'; });
+    area.addEventListener('dragleave', () => { area.style.background = ''; });
+    area.addEventListener('drop', e => {
+        e.preventDefault(); area.style.background = '';
+        const f = e.dataTransfer.files?.[0];
+        if (f) seleccionarEcheqPDF(f);
+    });
+}
+
+function seleccionarEcheqPDF(file) {
+    if (!file) return;
+    if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+        mostrarError('El archivo debe ser un PDF.');
+        return;
+    }
+    echeqFileSeleccionado = file;
+    refrescarModalEcheq();
+}
+
+function quitarEcheqPDF() {
+    echeqFileSeleccionado = null;
+    echecksDetectados = [];
+    echeqMetadata = null;
+    refrescarModalEcheq();
+}
+
+async function extraerEcheq(ia) {
+    const apiKey = ia === 'gemini'
+        ? window.__ENV__?.GEMINI_API_KEY
+        : window.__ENV__?.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+        mostrarError(`La API Key de ${ia === 'gemini' ? 'Gemini' : 'Claude'} no está configurada.`);
+        return;
+    }
+    if (!echeqFileSeleccionado) {
+        mostrarError('Subí primero el PDF.');
+        return;
+    }
+
+    // Mostrar estado de carga en el body
+    const body = document.querySelector('.modal .modal-body');
+    if (body) {
+        body.innerHTML = `
+            <div style="text-align:center;padding:var(--espacio-xl);">
+                <div class="spinner" style="margin:0 auto var(--espacio-md);"></div>
+                <div style="color:var(--color-texto);">Extrayendo datos del e-cheque con <strong>${ia === 'gemini' ? 'Gemini' : 'Claude'}</strong>...</div>
+                <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:var(--espacio-xs);">Puede tardar unos segundos.</div>
+            </div>
+        `;
+    }
+
+    try {
+        const base64 = await archivoABase64Cheque(echeqFileSeleccionado);
+        const datos = ia === 'gemini'
+            ? await llamarGeminiEcheq(apiKey, base64)
+            : await llamarClaudeEcheq(apiKey, base64);
+
+        const echecks = Array.isArray(datos?.echecks) ? datos.echecks : [];
+        if (echecks.length === 0) {
+            mostrarError('La IA no detectó e-cheques en el PDF. Probá la otra IA o verificá que sea el archivo correcto.');
+            refrescarModalEcheq();
+            return;
+        }
+
+        echecksDetectados = echecks.map(e => ({
+            tempId: 'e_' + Math.random().toString(36).slice(2),
+            numero:        e.numero        || '',
+            fecha_emision: e.fecha_emision || '',
+            fecha_cobro:   e.fecha_cobro   || '',
+            monto:         e.monto != null ? Number(e.monto) : 0
+        }));
+
+        // Auto-match de cuenta libradora por número
+        let cuentaMatchId = null;
+        if (datos.cuenta_libradora) {
+            const cuentasEmpresa = cuentas.filter(c => c.empresa_id === empresaActivaId);
+            const numLimpio = String(datos.cuenta_libradora).replace(/^0+/, '');   // sacar ceros a la izq
+            const match = cuentasEmpresa.find(c => {
+                const n = String(c.numero_cuenta || '').replace(/^0+/, '');
+                return n && n === numLimpio;
+            });
+            if (match) cuentaMatchId = match.id;
+        }
+
+        // Auto-match de beneficiario por CUIT normalizado en contratistas/empleados/arrendadores
+        const benCuitRaw = datos.beneficiario_cuit || '';
+        const benCuitN   = benCuitRaw ? String(benCuitRaw).replace(/\D/g, '') : null;
+        const cuitsIguales = (a, b) => a && b && String(a).replace(/\D/g, '') === String(b).replace(/\D/g, '');
+        let matchTipo = 'otro';
+        let matchNombre = null;
+        let matchEntidadId = null;
+        if (benCuitN) {
+            const c = contratistasTesoreria.find(x => cuitsIguales(x.cuit, benCuitN));
+            if (c) { matchTipo = 'contratista'; matchNombre = c.nombre; matchEntidadId = c.id; }
+            if (!matchEntidadId) {
+                const e = empleadosTesoreria.find(x => cuitsIguales(x.cuit, benCuitN));
+                if (e) { matchTipo = 'empleado'; matchNombre = e.nombre; matchEntidadId = e.id; }
+            }
+            if (!matchEntidadId) {
+                const a = arrendadoresTesoreria.find(x => cuitsIguales(x.cuit, benCuitN));
+                if (a) { matchTipo = 'arrendador'; matchNombre = a.nombre; matchEntidadId = a.id; }
+            }
+        }
+
+        echeqMetadata = {
+            cuenta_libradora: datos.cuenta_libradora || '',
+            cuentaMatchId,
+            beneficiario_nombre: datos.beneficiario_nombre || '',
+            beneficiario_cuit:   datos.beneficiario_cuit   || '',
+            beneficiario_match_tipo:   matchTipo,        // 'contratista' | 'empleado' | 'arrendador' | 'otro'
+            beneficiario_match_nombre: matchNombre,      // nombre tal como está cargado en el catálogo
+            beneficiario_match_id:     matchEntidadId    // id del contratista/empleado/arrendador matcheado
+        };
+
+        mostrarExito(`Se detectó${echecks.length !== 1 ? 'aron' : ''} ${echecks.length} e-cheque${echecks.length !== 1 ? 's' : ''}. Revisá los datos antes de guardar.`);
+        refrescarModalEcheq();
+    } catch (err) {
+        console.error(`${ia} falló al extraer e-cheque:`, err);
+        mostrarError(`No se pudo extraer con ${ia === 'gemini' ? 'Gemini' : 'Claude'}: ${err.message}. Probá la otra IA.`);
+        refrescarModalEcheq();
+    }
+}
+
+/**
+ * Estado 3: formulario editable con los datos extraídos.
+ */
+function renderEcheqFormulario() {
+    const cuentasEmpresa = cuentas.filter(c =>
+        c.empresa_id === empresaActivaId && c.moneda === 'ARS' && c.activa
+    );
+    const opcionesCuentas = cuentasEmpresa.map(c => {
+        const sel = c.id === echeqMetadata?.cuentaMatchId ? 'selected' : '';
+        const num = c.numero_cuenta ? ` (${c.numero_cuenta})` : '';
+        return `<option value="${c.id}" ${sel}>${c.alias || c.banco}${num}</option>`;
+    }).join('');
+    const opcionesCat = categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+
+    const totalMonto = echecksDetectados.reduce((s, e) => s + Number(e.monto || 0), 0);
+    const benCuit  = echeqMetadata?.beneficiario_cuit   || '—';
+    const benNom   = echeqMetadata?.beneficiario_nombre || '—';
+    const cuentaLib = echeqMetadata?.cuenta_libradora   || '—';
+    const cuentaMatchAlerta = !echeqMetadata?.cuentaMatchId
+        ? `<div style="font-size:var(--texto-xs);color:var(--color-dorado);margin-top:4px;">⚠ No se encontró una cuenta tuya con ese número. Elegí cuál corresponde.</div>`
+        : `<div style="font-size:var(--texto-xs);color:var(--color-verde);margin-top:4px;">✓ Coincide con una cuenta tuya.</div>`;
+
+    return `
+        <div style="background:rgba(74,158,110,0.05);border:1px solid var(--color-verde);border-radius:var(--radio-md);padding:var(--espacio-sm) var(--espacio-md);margin-bottom:var(--espacio-md);">
+            <div style="display:flex;align-items:center;gap:var(--espacio-sm);flex-wrap:wrap;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-verde)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
+                <div style="flex:1;">Detectado${echecksDetectados.length !== 1 ? 's' : ''} <strong>${echecksDetectados.length} e-cheque${echecksDetectados.length !== 1 ? 's' : ''}</strong> · Total: <strong>$ ${formatearNumero(totalMonto)}</strong></div>
+                <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="quitarEcheqPDF()">Cambiar PDF</button>
+            </div>
+        </div>
+
+        <div class="form-seccion-titulo">Datos comunes</div>
+
+        <div class="campo-grupo">
+            <label class="campo-label">Cuenta libradora <span class="campo-requerido">*</span></label>
+            <select id="echeq-cuenta" class="campo-select">
+                <option value="">Seleccionar...</option>${opcionesCuentas}
+            </select>
+            <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">PDF: <span style="font-family:var(--fuente-mono);">${cuentaLib}</span></div>
+            ${cuentaMatchAlerta}
+        </div>
+
+        ${renderEcheqBloqueBeneficiario()}
+
+        <div class="campos-fila">
+            <div class="campo-grupo">
+                <label class="campo-label">Categoría</label>
+                <select id="echeq-categoria" class="campo-select">
+                    <option value="">Seleccionar...</option>${opcionesCat}
+                </select>
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">Entregado por</label>
+                <select id="echeq-empleado-entrega" class="campo-select">
+                    <option value="">— Sin especificar —</option>
+                    ${empleadosTesoreria.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+
+        <hr class="form-separador">
+
+        <div class="form-seccion-titulo">E-cheques detectados</div>
+        <div id="echeq-lista">${renderFilasEcheck()}</div>
+
+        <hr class="form-separador">
+
+        <div class="form-seccion-titulo">Facturas <span style="font-weight:400;color:var(--color-texto-tenue);font-size:var(--texto-xs);">(compartidas — se vinculan a TODOS los e-cheques)</span></div>
+        <div id="bloque-facturas-pendientes">
+            ${renderizarSeccionFacturasPendientes()}
+        </div>
+    `;
+}
+
+/**
+ * Bloque de beneficiario editable dentro del modal de e-cheque.
+ * Reusa los mismos IDs (ben-tipo, ben-contratista, etc.) y la función
+ * actualizarFormBeneficiario() del modal de cheque normal, así el usuario
+ * puede modificar el beneficiario detectado por la IA cuando se equivocó.
+ *
+ * Pre-selección según el auto-match:
+ *   - match en contratista/empleado/arrendador → tipo correspondiente + entidad
+ *   - sin match (o solo "otro") → tipo 'otro' con nombre+CUIT del PDF
+ */
+function renderEcheqBloqueBeneficiario() {
+    const benNom  = echeqMetadata?.beneficiario_nombre || '';
+    const benCuit = echeqMetadata?.beneficiario_cuit   || '';
+    const mt = echeqMetadata?.beneficiario_match_tipo || 'otro';
+    const mid = echeqMetadata?.beneficiario_match_id   || '';
+
+    // Cartel arriba con la lectura del PDF, para que el usuario sepa qué dijo la IA
+    const aviso = `
+        <div style="padding:var(--espacio-xs) var(--espacio-sm);background:var(--color-fondo-secundario);border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-bottom:var(--espacio-sm);">
+            📄 Detectado del PDF: <strong style="color:var(--color-texto);">${benNom || '—'}</strong>${benCuit ? ` · CUIT ${benCuit}` : ''}
+            ${mt !== 'otro' && echeqMetadata?.beneficiario_match_nombre
+                ? `<br><span style="color:var(--color-verde);">✓ Coincide con ${echeqMetadata.beneficiario_match_nombre} (${mt})</span>`
+                : ''}
+        </div>
+    `;
+
+    const opcionesContr = contratistasTesoreria.map(c =>
+        `<option value="${c.id}" ${mt === 'contratista' && mid === c.id ? 'selected' : ''}>${c.nombre}${c.especialidad ? ' — ' + c.especialidad : ''}</option>`
+    ).join('');
+    const opcionesEmpl = empleadosTesoreria.map(e =>
+        `<option value="${e.id}" ${mt === 'empleado' && mid === e.id ? 'selected' : ''}>${e.nombre}</option>`
+    ).join('');
+    const opcionesArr = arrendadoresTesoreria.map(a =>
+        `<option value="${a.id}" ${mt === 'arrendador' && mid === a.id ? 'selected' : ''}>${a.nombre}</option>`
+    ).join('');
+
+    return `
+        ${aviso}
+        <div style="border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md);margin-bottom:var(--espacio-md);">
+            <div style="font-size:var(--texto-sm);font-weight:600;color:var(--color-texto-secundario);margin-bottom:var(--espacio-sm);">BENEFICIARIO</div>
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">Tipo</label>
+                    <select id="ben-tipo" class="campo-select" onchange="actualizarFormBeneficiarioEcheq(this.value)">
+                        <option value="contratista" ${mt === 'contratista' ? 'selected' : ''}>Contratista</option>
+                        <option value="empleado"    ${mt === 'empleado'    ? 'selected' : ''}>Empleado</option>
+                        <option value="arrendador"  ${mt === 'arrendador'  ? 'selected' : ''}>Arrendador</option>
+                        <option value="otro"        ${mt === 'otro'        ? 'selected' : ''}>Otro</option>
+                    </select>
+                </div>
+                <div class="campo-grupo" id="ben-grupo-contratista" style="${mt !== 'contratista' ? 'display:none' : ''}">
+                    <label class="campo-label">Contratista</label>
+                    <select id="ben-contratista" class="campo-select">
+                        <option value="">Seleccionar...</option>${opcionesContr}
+                    </select>
+                </div>
+                <div class="campo-grupo" id="ben-grupo-empleado" style="${mt !== 'empleado' ? 'display:none' : ''}">
+                    <label class="campo-label">Empleado</label>
+                    <select id="ben-empleado" class="campo-select">
+                        <option value="">Seleccionar...</option>${opcionesEmpl}
+                    </select>
+                </div>
+                <div class="campo-grupo" id="ben-grupo-arrendador" style="${mt !== 'arrendador' ? 'display:none' : ''}">
+                    <label class="campo-label">Arrendador</label>
+                    <select id="ben-arrendador" class="campo-select">
+                        <option value="">Seleccionar...</option>${opcionesArr}
+                    </select>
+                </div>
+            </div>
+            <div id="ben-grupo-otro" style="${mt !== 'otro' ? 'display:none' : ''}">
+                <div class="campos-fila">
+                    <div class="campo-grupo">
+                        <label class="campo-label">Nombre / Razón social</label>
+                        <input type="text" id="ben-otro-nombre" class="campo-input"
+                            value="${benNom.replace(/"/g, '&quot;')}" placeholder="Ej: Agro Servicios SRL">
+                    </div>
+                    <div class="campo-grupo">
+                        <label class="campo-label">CUIT (opcional)</label>
+                        <input type="text" id="ben-otro-cuit" class="campo-input"
+                            value="${benCuit.replace(/"/g, '&quot;')}" placeholder="Ej: 20-12345678-9">
+                    </div>
+                </div>
+            </div>
+            <!-- Para arrendadores: tipo blanco/negro (compartido para todos los e-cheques) -->
+            <div id="echeq-arrendador-tipo-wrap" style="${mt !== 'arrendador' ? 'display:none' : ''};margin-top:var(--espacio-sm);">
+                <div class="campo-grupo">
+                    <label class="campo-label">Tipo (blanco/negro)</label>
+                    <select id="echeq-arrendador-tipo" class="campo-select">
+                        <option value="blanco">Blanco (con factura)</option>
+                        <option value="negro">Negro (sin factura)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Variante para el modal de e-cheque: hace lo mismo que actualizarFormBeneficiario
+ * pero también muestra/oculta el selector blanco/negro del arrendador.
+ */
+function actualizarFormBeneficiarioEcheq(tipo) {
+    document.getElementById('ben-grupo-contratista').style.display = tipo === 'contratista' ? '' : 'none';
+    document.getElementById('ben-grupo-empleado').style.display    = tipo === 'empleado'    ? '' : 'none';
+    document.getElementById('ben-grupo-arrendador').style.display  = tipo === 'arrendador'  ? '' : 'none';
+    document.getElementById('ben-grupo-otro').style.display        = tipo === 'otro'        ? '' : 'none';
+    const wrap = document.getElementById('echeq-arrendador-tipo-wrap');
+    if (wrap) wrap.style.display = tipo === 'arrendador' ? '' : 'none';
+}
+
+function renderFilasEcheck() {
+    return echecksDetectados.map((e, i) => `
+        <div style="border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-sm) var(--espacio-md);margin-bottom:var(--espacio-sm);background:var(--color-fondo-tarjeta);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--espacio-xs);">
+                <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-texto-secundario);">E-cheque #${i + 1} <span class="badge badge-azul" style="margin-left:6px;">📱 e-cheq</span></div>
+                ${echecksDetectados.length > 1 ? `<button type="button" class="btn-secundario" style="padding:2px 8px;font-size:var(--texto-xs);color:var(--color-error);border-color:var(--color-error);" onclick="quitarFilaEcheck(${i})">Quitar</button>` : ''}
+            </div>
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">Nº <span class="campo-requerido">*</span></label>
+                    <input type="text" class="campo-input" value="${e.numero || ''}"
+                        oninput="actualizarFilaEcheck(${i}, 'numero', this.value)">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Emisión <span class="campo-requerido">*</span></label>
+                    <input type="text" data-fecha class="campo-input" value="${isoADDMM(e.fecha_emision)}"
+                        placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10"
+                        oninput="actualizarFilaEcheck(${i}, 'fecha_emision', ddmmAISO(this.value))">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Cobro <span class="campo-requerido">*</span></label>
+                    <input type="text" data-fecha class="campo-input" value="${isoADDMM(e.fecha_cobro)}"
+                        placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10"
+                        oninput="actualizarFilaEcheck(${i}, 'fecha_cobro', ddmmAISO(this.value))">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Monto <span class="campo-requerido">*</span></label>
+                    <input type="text" data-monto class="campo-input" value="${formatearMontoInput(e.monto)}"
+                        oninput="actualizarFilaEcheck(${i}, 'monto', parseMontoInput(this.value))">
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function actualizarFilaEcheck(idx, campo, valor) {
+    const e = echecksDetectados[idx];
+    if (!e) return;
+    e[campo] = valor;
+}
+
+function quitarFilaEcheck(idx) {
+    if (echecksDetectados.length <= 1) return;
+    echecksDetectados.splice(idx, 1);
+    const cont = document.getElementById('echeq-lista');
+    if (cont) cont.innerHTML = renderFilasEcheck();
+    if (typeof activarFechasDDMM === 'function') activarFechasDDMM(document.querySelector('.modal'));
+    if (typeof activarFormatoMonto === 'function') activarFormatoMonto(document.querySelector('.modal'));
+    // Re-render del footer para actualizar la cantidad en el botón
+    const footer = document.querySelector('.modal .modal-footer');
+    if (footer) footer.innerHTML = renderFooterEcheq();
+}
+
+async function guardarEchecks() {
+    const cuentaId       = document.getElementById('echeq-cuenta')?.value;
+    const categoriaId    = document.getElementById('echeq-categoria')?.value || null;
+    const empleadoEntregaId = document.getElementById('echeq-empleado-entrega')?.value || null;
+
+    if (!cuentaId) { mostrarError('Elegí la cuenta libradora.'); return; }
+    if (echecksDetectados.length === 0) { mostrarError('No hay e-cheques para registrar.'); return; }
+
+    // Validar cada e-cheque
+    const numerosVistos = new Set();
+    for (let i = 0; i < echecksDetectados.length; i++) {
+        const e = echecksDetectados[i];
+        const numero = (e.numero || '').trim();
+        if (!numero)            { mostrarError(`E-cheque #${i + 1}: cargá el número.`); return; }
+        if (!e.fecha_emision)   { mostrarError(`E-cheque #${i + 1}: cargá la fecha de emisión.`); return; }
+        if (!e.fecha_cobro)     { mostrarError(`E-cheque #${i + 1}: cargá la fecha de cobro.`); return; }
+        if (!e.monto || e.monto <= 0) { mostrarError(`E-cheque #${i + 1}: monto inválido.`); return; }
+        if (numerosVistos.has(numero)) { mostrarError(`Nº "${numero}" repetido.`); return; }
+        numerosVistos.add(numero);
+    }
+
+    // Resolver beneficiario desde el selector inline (mismo patrón que cheque normal).
+    // El usuario puede haber cambiado el tipo/entidad respecto del auto-match de la IA.
+    const benTipo = document.getElementById('ben-tipo')?.value || 'otro';
+    let beneficiarioId = null;
+    let arrIdSel = null;
+    let tipoArrBN = 'blanco';
+    if (benTipo === 'contratista') {
+        const id = document.getElementById('ben-contratista')?.value;
+        if (!id) { mostrarError('Seleccioná el contratista.'); return; }
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'contratista', contratista_id: id });
+    } else if (benTipo === 'empleado') {
+        const id = document.getElementById('ben-empleado')?.value;
+        if (!id) { mostrarError('Seleccioná el empleado.'); return; }
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'empleado', empleado_id: id });
+    } else if (benTipo === 'arrendador') {
+        arrIdSel = document.getElementById('ben-arrendador')?.value;
+        if (!arrIdSel) { mostrarError('Seleccioná el arrendador.'); return; }
+        tipoArrBN = document.getElementById('echeq-arrendador-tipo')?.value || 'blanco';
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'arrendador', arrendador_id: arrIdSel });
+    } else {
+        const nombre = document.getElementById('ben-otro-nombre')?.value?.trim();
+        const cuit   = document.getElementById('ben-otro-cuit')?.value?.trim() || null;
+        if (!nombre) { mostrarError('Cargá el nombre del beneficiario.'); return; }
+        beneficiarioId = await obtenerOCrearBeneficiario({ tipo: 'otro', nombre, cuit });
+    }
+    if (!beneficiarioId) return;
+
+    const btn = document.getElementById('btn-guardar-echeq');
+    if (btn) { btn.disabled = true; btn.textContent = 'Registrando...'; }
+
+    // Subir el PDF UNA sola vez al Storage. Todos los e-cheques que vienen
+    // de este PDF van a apuntar al mismo archivo.
+    let pdfPath = null;
+    if (echeqFileSeleccionado) {
+        const ts = Date.now();
+        const ext = (echeqFileSeleccionado.name.split('.').pop() || 'pdf').toLowerCase();
+        const extOk = ['pdf'].includes(ext) ? ext : 'pdf';
+        pdfPath = `${empresaActivaId}/${ts}.${extOk}`;
+        try {
+            const { error: upErr } = await db.storage
+                .from('echecks')
+                .upload(pdfPath, echeqFileSeleccionado, { upsert: false });
+            if (upErr) throw upErr;
+        } catch (err) {
+            console.error('No se pudo subir el PDF del e-cheque:', err);
+            mostrarAlerta('No se pudo subir el PDF al Storage. Los e-cheques se registran igual, pero no vas a poder verlos desde el ojito.');
+            pdfPath = null;
+        }
+    }
+
+    const hoyStr = fechaHoyStr();
+    const idsCreados = [];
+    const errores = [];
+
+    for (let i = 0; i < echecksDetectados.length; i++) {
+        const e = echecksDetectados[i];
+        const numero = (e.numero || '').trim();
+        const estadoCalc = e.fecha_cobro > hoyStr ? 'futuro' : 'pendiente';
+
+        const datos = {
+            empresa_id:          empresaActivaId,
+            cuenta_bancaria_id:  cuentaId,
+            tipo:                'cheque',
+            es_echeck:           true,
+            numero_cheque:       numero,
+            fecha_emision:       e.fecha_emision,
+            fecha_cobro:         e.fecha_cobro,
+            fecha_balde:         calcularFechaBaldeJS(e.fecha_cobro),
+            beneficiario_id:     beneficiarioId,
+            categoria_id:        categoriaId,
+            monto:               Number(e.monto),
+            notas:               null,
+            empleado_entrega_id: empleadoEntregaId,
+            origen:              'manual',
+            estado:              estadoCalc,
+            pdf_url:             pdfPath
+        };
+
+        const r = await ejecutarConsulta(
+            db.from('movimientos_tesoreria').insert(datos).select(),
+            `registrar e-cheque #${i + 1}`
+        );
+        if (r && r[0]) {
+            idsCreados.push(r[0].id);
+        } else {
+            errores.push(`#${i + 1} (Nº ${numero})`);
+        }
+    }
+
+    // Procesar facturas (compartidas — se vinculan a todos)
+    let resumenFact = null;
+    if (idsCreados.length > 0 && facturasPendientesNuevas.length > 0) {
+        resumenFact = await procesarFacturasPendientesParaChequesBulk(idsCreados, empresaActivaId);
+    }
+
+    const nOK = idsCreados.length;
+    const nFail = errores.length;
+    if (nFail === 0) {
+        let msg = `${nOK} e-cheque${nOK !== 1 ? 's' : ''} registrado${nOK !== 1 ? 's' : ''}`;
+        if (resumenFact?.exitos > 0) msg += ` con ${resumenFact.exitos} factura${resumenFact.exitos !== 1 ? 's' : ''} vinculada${resumenFact.exitos !== 1 ? 's' : ''}`;
+        mostrarExito(msg + '.');
+    } else {
+        mostrarAlerta(`${nOK} registrado${nOK !== 1 ? 's' : ''}, ${nFail} fallaron: ${errores.join(', ')}.`);
+    }
+
+    cerrarModal();
+    echecksDetectados = [];
+    echeqMetadata = null;
+    echeqFileSeleccionado = null;
+    facturasPendientesNuevas = [];
     await cargarTesoreria();
 }
 
@@ -2574,6 +4100,107 @@ function actualizarFormBeneficiario(tipo) {
     if (grupoQQ) grupoQQ.style.display = tipo === 'arrendador' ? '' : 'none';
 }
 
+// ==============================================
+// CREAR CONTRATISTA NUEVO INLINE (desde modal de cheque)
+// ==============================================
+
+/**
+ * HTML del panel inline para crear un contratista sin salir del modal de
+ * cheque. Inicialmente oculto. Se muestra/oculta con togglePanelNuevoContratista().
+ */
+function renderizarPanelNuevoContratista() {
+    return `
+        <div id="panel-nuevo-contratista" style="display:none;margin-top:var(--espacio-sm);padding:var(--espacio-sm);background:var(--color-fondo-secundario);border:1px solid var(--color-borde);border-radius:var(--radio-md);">
+            <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-dorado);margin-bottom:var(--espacio-sm);">NUEVO CONTRATISTA</div>
+            <div class="campo-grupo" style="margin-bottom:var(--espacio-sm);">
+                <label class="campo-label" style="font-size:var(--texto-xs);">Nombre <span class="campo-requerido">*</span></label>
+                <input type="text" id="nuevo-contr-nombre" class="campo-input" placeholder="Nombre o razón social">
+            </div>
+            <div class="campos-fila" style="margin-bottom:var(--espacio-sm);">
+                <div class="campo-grupo">
+                    <label class="campo-label" style="font-size:var(--texto-xs);">CUIT</label>
+                    <input type="text" id="nuevo-contr-cuit" class="campo-input" placeholder="XX-XXXXXXXX-X">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label" style="font-size:var(--texto-xs);">Especialidad</label>
+                    <select id="nuevo-contr-especialidad" class="campo-select">
+                        <option value="">Seleccionar...</option>
+                        <option value="Fumigación">Fumigación</option>
+                        <option value="Cosecha">Cosecha</option>
+                        <option value="Siembra">Siembra</option>
+                        <option value="Transporte">Transporte</option>
+                        <option value="Laboreo">Laboreo</option>
+                        <option value="Varios">Varios</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex;gap:var(--espacio-sm);justify-content:flex-end;">
+                <button type="button" class="btn-secundario" onclick="togglePanelNuevoContratista()" style="padding:4px 10px;font-size:var(--texto-xs);">Cancelar</button>
+                <button type="button" class="btn-primario" onclick="crearContratistaInline()" style="padding:4px 10px;font-size:var(--texto-xs);">Crear y seleccionar</button>
+            </div>
+        </div>
+    `;
+}
+
+function togglePanelNuevoContratista() {
+    const panel = document.getElementById('panel-nuevo-contratista');
+    if (!panel) return;
+    const abierto = panel.style.display !== 'none';
+    panel.style.display = abierto ? 'none' : 'block';
+    if (!abierto) {
+        // Al abrirlo, limpiamos los campos y enfocamos el nombre
+        document.getElementById('nuevo-contr-nombre').value = '';
+        document.getElementById('nuevo-contr-cuit').value = '';
+        document.getElementById('nuevo-contr-especialidad').value = '';
+        setTimeout(() => document.getElementById('nuevo-contr-nombre')?.focus(), 50);
+    }
+}
+
+/**
+ * Crea un contratista nuevo en la BD, actualiza el cache local y
+ * lo selecciona automáticamente en el dropdown de beneficiario.
+ */
+async function crearContratistaInline() {
+    const nombre = document.getElementById('nuevo-contr-nombre')?.value?.trim();
+    const cuit   = document.getElementById('nuevo-contr-cuit')?.value?.trim() || null;
+    const esp    = document.getElementById('nuevo-contr-especialidad')?.value || null;
+
+    if (!nombre) {
+        mostrarError('El nombre del contratista es obligatorio.');
+        return;
+    }
+
+    const insertadas = await ejecutarConsulta(
+        db.from('contratistas')
+          .insert({ nombre, cuit, especialidad: esp })
+          .select(),
+        'crear contratista'
+    );
+    if (!insertadas || insertadas.length === 0) return;
+
+    const nuevo = insertadas[0];
+
+    // Actualizar el cache local y reordenar alfabéticamente
+    contratistasTesoreria.push(nuevo);
+    contratistasTesoreria.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+    // Reconstruir el <select> con la nueva opción y dejarlo seleccionado
+    const select = document.getElementById('ben-contratista');
+    if (select) {
+        const opciones = ['<option value="">Seleccionar...</option>'].concat(
+            contratistasTesoreria.map(c =>
+                `<option value="${c.id}">${c.nombre}${c.especialidad ? ' — ' + c.especialidad : ''}</option>`
+            )
+        );
+        select.innerHTML = opciones.join('');
+        select.value = nuevo.id;
+    }
+
+    // Cerrar panel
+    togglePanelNuevoContratista();
+    mostrarExito(`Contratista "${nombre}" creado y seleccionado.`);
+}
+
 async function guardarBeneficiario() {
     const tipo = document.getElementById('ben-tipo')?.value;
     if (!tipo) { mostrarError('Seleccioná el tipo de beneficiario.'); return; }
@@ -2646,7 +4273,7 @@ function abrirModalSaldo() {
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Saldo ($) <span class="campo-requerido">*</span></label>
-                <input type="number" id="saldo-monto" class="campo-input" placeholder="Saldo actual del banco" step="0.01">
+                <input type="text" data-monto id="saldo-monto" class="campo-input" placeholder="Saldo actual del banco">
             </div>
         </div>
     `;
@@ -2662,11 +4289,11 @@ function abrirModalSaldo() {
 async function guardarSaldo() {
     const cuentaId = document.getElementById('saldo-cuenta')?.value;
     const fecha    = ddmmAISO(document.getElementById('saldo-fecha')?.value);
-    const saldo    = document.getElementById('saldo-monto')?.value;
+    const saldo    = parseMontoInput(document.getElementById('saldo-monto')?.value);
 
     if (!cuentaId) { mostrarError('Seleccioná la cuenta.'); return; }
     if (!fecha)    { mostrarError('La fecha es obligatoria.'); return; }
-    if (!saldo)    { mostrarError('Ingresá el saldo.'); return; }
+    if (saldo == null) { mostrarError('Ingresá el saldo.'); return; }
 
     // Upsert: si ya hay saldo para esa cuenta y fecha, actualiza
     const resultado = await ejecutarConsulta(
@@ -2818,7 +4445,7 @@ function abrirModalPrestamo() {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Monto total <span class="campo-requerido">*</span></label>
-                <input type="number" id="prest-monto" class="campo-input" placeholder="Monto total del préstamo" step="0.01" min="1">
+                <input type="text" data-monto id="prest-monto" class="campo-input" placeholder="Monto total del préstamo">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Cantidad de cuotas <span class="campo-requerido">*</span></label>
@@ -2862,7 +4489,7 @@ function abrirModalPrestamo() {
 async function guardarPrestamo() {
     const acreedor   = document.getElementById('prest-acreedor')?.value.trim();
     const moneda     = document.getElementById('prest-moneda')?.value;
-    const monto      = parseFloat(document.getElementById('prest-monto')?.value);
+    const monto      = parseMontoInput(document.getElementById('prest-monto')?.value);
     const cantCuotas = parseInt(document.getElementById('prest-cuotas')?.value);
     const fechaOtorg = ddmmAISO(document.getElementById('prest-fecha')?.value);
     const tasaInput  = document.getElementById('prest-tasa')?.value;
@@ -3608,6 +5235,35 @@ function calcularFechaBaldeJS(fechaStr) {
     const balde   = new Date(fecha);
     balde.setDate(dia - offset);
     return fechaALocalStr(balde);
+}
+
+/**
+ * Devuelve el balde inmediatamente posterior al dado (que debe ser un balde
+ * normalizado: día múltiplo de 5 o último día del mes).
+ * Respeta los límites de mes: el balde después del 30 de mayo es el 5 de
+ * junio (no el 4), y después del 25 de febrero es el 5 de marzo.
+ */
+function siguienteBalde(baldeStr) {
+    if (!baldeStr) return baldeStr;
+    const fecha = new Date(baldeStr + 'T12:00:00');
+    const dia   = fecha.getDate();
+
+    if (dia < 25) {
+        // 5 → 10, 10 → 15, 15 → 20, 20 → 25
+        fecha.setDate(dia + 5);
+    } else if (dia === 25) {
+        // Si el mes tiene día 30, el siguiente balde es 30; sino salta a 5 del mes próximo
+        const ultimoDia = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate();
+        if (ultimoDia >= 30) {
+            fecha.setDate(30);
+        } else {
+            fecha.setMonth(fecha.getMonth() + 1, 5);
+        }
+    } else {
+        // 30 → 5 del mes próximo (día 31 también cae acá tras normalizar a 30)
+        fecha.setMonth(fecha.getMonth() + 1, 5);
+    }
+    return fechaALocalStr(fecha);
 }
 
 /**

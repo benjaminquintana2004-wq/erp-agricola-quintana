@@ -619,6 +619,15 @@ async function guardarArrendador() {
             db.from('arrendadores').update(datos).eq('id', arrendadorEditandoId),
             'actualizar arrendador'
         );
+        // Sincronizar el nombre cacheado en beneficiarios (tesorería).
+        if (resultado !== undefined && datos.nombre) {
+            await ejecutarConsulta(
+                db.from('beneficiarios')
+                  .update({ nombre: datos.nombre })
+                  .eq('arrendador_id', arrendadorEditandoId),
+                'sincronizar nombre en beneficiarios'
+            );
+        }
     } else {
         resultado = await ejecutarConsulta(
             db.from('arrendadores').insert(datos),

@@ -306,6 +306,76 @@ function abrirModal(titulo, contenidoHTML, footerHTML = '') {
 
     // Activar máscara dd/mm/aaaa en cualquier input de fecha del modal
     activarFechasDDMM(document.querySelector('.modal'));
+    // Activar formato de miles en cualquier input de monto del modal
+    activarFormatoMonto(document.querySelector('.modal'));
+}
+
+// ==============================================
+// MONTOS — Formato 1.234.567,89 (es-AR) en inputs
+// ==============================================
+// Uso en HTML:
+//   <input type="text" data-monto inputmode="decimal"
+//          value="${formatearMontoInput(datos.monto)}">
+// Uso al leer:
+//   const monto = parseMontoInput(document.getElementById('campo-monto').value);
+//
+// Comportamiento:
+//   - Al hacer focus, el input muestra el número "crudo" (3000000) para editar.
+//   - Al perder el foco, se reformatea con separadores ("3.000.000").
+
+/**
+ * Convierte un string del input en número.
+ * Acepta:  "3000000", "3.000.000", "3.000.000,50", "3000000.50", ""
+ * Devuelve NaN si no se puede parsear o '' si está vacío → null.
+ */
+function parseMontoInput(valor) {
+    if (valor == null) return null;
+    const s = String(valor).trim();
+    if (!s) return null;
+    // Quitar separadores de miles (puntos), reemplazar coma decimal por punto
+    const limpio = s.replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(limpio);
+    return isNaN(n) ? null : n;
+}
+
+/**
+ * Formatea un número como string con separadores de miles es-AR.
+ * Devuelve '' si null/undefined/NaN.
+ */
+function formatearMontoInput(num) {
+    if (num == null || num === '') return '';
+    const n = typeof num === 'number' ? num : parseFloat(num);
+    if (isNaN(n)) return '';
+    return n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/**
+ * Adjunta los listeners de focus/blur a todos los inputs con [data-monto]
+ * dentro del scope dado. Idempotente (no duplica handlers).
+ */
+function activarFormatoMonto(scope) {
+    if (!scope) return;
+    scope.querySelectorAll('input[data-monto]').forEach(input => {
+        if (input.dataset.montoActivo === '1') return;
+        input.dataset.montoActivo = '1';
+        if (!input.getAttribute('inputmode')) input.setAttribute('inputmode', 'decimal');
+
+        // Al ganar foco, mostrar el valor crudo (sin separadores) para que sea editable
+        input.addEventListener('focus', () => {
+            const n = parseMontoInput(input.value);
+            input.value = n == null ? '' : String(n);
+            // Seleccionar todo para que el usuario pueda reescribir rápido
+            try { input.select(); } catch (_) {}
+        });
+
+        // Al perder foco, reformatear con separadores
+        input.addEventListener('blur', () => {
+            const n = parseMontoInput(input.value);
+            input.value = n == null ? '' : formatearMontoInput(n);
+            // Disparar 'change' para que cualquier listener externo se entere
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
 }
 
 // ==============================================

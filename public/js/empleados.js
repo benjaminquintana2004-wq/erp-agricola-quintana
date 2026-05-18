@@ -261,6 +261,15 @@ async function guardarEmpleado() {
     let resultado;
     if (empleadoEditandoId) {
         resultado = await ejecutarConsulta(db.from('empleados').update(datos).eq('id', empleadoEditandoId), 'actualizar empleado');
+        // Sincronizar el nombre cacheado en beneficiarios (tesorería).
+        if (resultado !== undefined && datos.nombre) {
+            await ejecutarConsulta(
+                db.from('beneficiarios')
+                  .update({ nombre: datos.nombre })
+                  .eq('empleado_id', empleadoEditandoId),
+                'sincronizar nombre en beneficiarios'
+            );
+        }
     } else {
         resultado = await ejecutarConsulta(db.from('empleados').insert(datos), 'crear empleado');
     }

@@ -216,6 +216,17 @@ async function guardarContratista() {
     let resultado;
     if (contratistaEditandoId) {
         resultado = await ejecutarConsulta(db.from('contratistas').update(datos).eq('id', contratistaEditandoId), 'actualizar contratista');
+        // Sincronizar el nombre cacheado en beneficiarios (usado por la tabla
+        // de cheques/movimientos en tesorería). Si no se sincroniza, los
+        // cheques viejos quedan con el nombre anterior.
+        if (resultado !== undefined) {
+            await ejecutarConsulta(
+                db.from('beneficiarios')
+                  .update({ nombre })
+                  .eq('contratista_id', contratistaEditandoId),
+                'sincronizar nombre en beneficiarios'
+            );
+        }
     } else {
         resultado = await ejecutarConsulta(db.from('contratistas').insert(datos), 'crear contratista');
     }
