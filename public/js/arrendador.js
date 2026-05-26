@@ -89,11 +89,107 @@ async function cargarFichaArrendador(id, usuario) {
         ${renderizarEncabezado(arrendador)}
         ${renderizarAccionesRapidas(arrendador)}
         ${renderizarStats(arrendador, contratos || [], saldos || [], movimientos || [])}
+        ${renderizarDesglosePorCampana(contratos || [], campanas || [], movimientos || [])}
         ${renderizarNotas(arrendador, usuario)}
         ${renderizarContratos(contratos || [])}
         ${renderizarLineaTiempo(contratos || [], movimientos || [])}
         ${renderizarTimeline(campanas || [], contratos || [], saldos || [], movimientos || [])}
         ${renderizarMovimientosRecientes(movimientos || [], id)}
+    `;
+}
+
+// ==============================================
+// DESGLOSE POR CAMPAÑA — Histórica / Actual / Futura
+// ==============================================
+
+/**
+ * Para cada contrato del arrendador, recorre las campañas que solapan con su
+ * vigencia y calcula el pactado, pagado y pendiente de cada combinación
+ * (contrato × campaña). Agrupa los resultados por estado de la campaña.
+ */
+function renderizarDesglosePorCampana(contratos, campanas, movimientos) {
+    if (contratos.length === 0 || campanas.length === 0) return '';
+
+    const hoy = new Date();
+    // Convención: campaña X/Y va de 1-jul-X a 30-jun-Y
+    const rangoCampana = (c) => ({
+        inicio: `${c.anio_inicio}-07-01`,
+        fin:    `${c.anio_fin}-06-30`,
+        iniDate: new Date(c.anio_inicio, 6, 1),
+        finDate: new Date(c.anio_fin, 5, 30, 23, 59, 59)
+    });
+    const estadoCampana = (c) => {
+        const r = rangoCampana(c);
+        if (hoy < r.iniDate) return 'futura';
+        if (hoy > r.finDate) return 'historica';
+        return 'actual';
+    };
+
+    // Para cada (contrato, campaña que solapa) calculamos pactado/pagado/pendiente
+    const filasPorEstado = { historica: [], actual: [], futura: [] };
+    let totalPactado = 0;
+    let totalPagado  = 0;
+
+    for (const ct of contratos) {
+        if (!ct.fecha_inicio || !ct.fecha_fin) continue;
+        for (const camp of campanas) {
+            const r = rangoCampana(camp);
+            // Solapamiento: contrato.fecha_inicio <= campaña.fin AND contrato.fecha_fin >= campaña.inicio
+            if (ct.fecha_inicio > r.fin || ct.fecha_fin < r.inicio) continue;
+
+            const pactado = parseFloat(ct.qq_pactados_anual || 0) + parseFloat(ct.qq_negro_anual || 0);
+            const pagado  = movimientos
+                .filter(m => m.campana_id === camp.id && m.contrato_id === ct.id)
+                .reduce((s, m) => s + parseFloat(m.qq || 0), 0);
+            const pendiente = Math.max(0, pactado - pagado);
+
+            const estado = estadoCampana(camp);
+            const nombreContrato = ct.nombre_grupo || 'Sin nombre';
+            filasPorEstado[estado].push({
+                campana: camp.nombre,
+                anioOrden: camp.anio_inicio,
+                contrato: nombreContrato,
+                pactado, pagado, pendiente
+            });
+
+            totalPactado += pactado;
+            totalPagado  += pagado;
+        }
+    }
+
+    // Si no hay nada, no mostrar la sección
+    const totalFilas = filasPorEstado.historica.length + filasPorEstado.actual.length + filasPorEstado.futura.length;
+    if (totalFilas === 0) return '';
+
+    // Ordenar dentro de cada grupo: históricas más recientes primero, futuras más cercanas primero
+    filasPorEstado.historica.sort((a, b) => b.anioOrden - a.anioOrden);
+    filasPorEstado.actual.sort((a, b) => a.contrato.localeCompare(b.contrato));
+    filasPorEstado.futura.sort((a, b) => a.anioOrden - b.anioOrden);
+
+    const totalPendiente = Math.max(0, totalPactado - totalPagado);
+
+    const fmt      = (n) => Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' qq';
+    const subtotal = (filas) => filas.reduce((s, f) => s + f.pendiente, 0);
+
+    return `
+        <div class="ficha-seccion">
+            <h2 class="ficha-seccion-titulo">QQ pendientes por campaña</h2>
+            <div class="desglose-campanas">
+                ${tarjetaEstadoQQ('historica', filasPorEstado.historica, fmt, subtotal)}
+                ${tarjetaEstadoQQ('actual',    filasPorEstado.actual,    fmt, subtotal)}
+                ${tarjetaEstadoQQ('futura',    filasPorEstado.futura,    fmt, subtotal)}
+            </div>
+            <div class="desglose-total">
+                <div class="desglose-total-fila desglose-total-fila-secundaria">
+                    <span>Total pactado</span>
+                    <span>${fmt(totalPactado)}</span>
+                </div>
+                <div class="desglose-total-fila desglose-total-fila-principal">
+                    <span>Total pendiente</span>
+                    <span>${fmt(totalPendiente)}</span>
+                </div>
+            </div>
+        </div>
     `;
 }
 

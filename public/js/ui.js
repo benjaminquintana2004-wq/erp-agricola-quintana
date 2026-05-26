@@ -39,7 +39,7 @@ const SECCIONES_MENU = [
     { seccion: 'Principal' },
     { nombre: 'Dashboard', icono: 'dashboard', url: '/index.html' },
     { nombre: 'Arrendadores', icono: 'arrendadores', url: '/arrendadores.html' },
-    { nombre: 'Movimientos', icono: 'movimientos', url: '/movimientos.html' },
+    { nombre: 'Movimientos', icono: 'movimientos', url: '/movimientos.html', badgeKey: 'movimientos' },
     { nombre: 'Contratos', icono: 'contratos', url: '/contratos.html' },
     { seccion: 'Producción' },
     { nombre: 'Campañas', icono: 'campanas', url: '/campanas.html' },
@@ -67,6 +67,10 @@ const SECCIONES_MENU = [
  * Genera el HTML del sidebar y lo inserta en el DOM.
  * Marca como activo el link que corresponde a la página actual.
  */
+// Registry global de valores de badges (clave → cantidad).
+// Cualquier página puede actualizarlo con actualizarBadgeSidebar('movimientos', N).
+window.__BADGES_SIDEBAR__ = window.__BADGES_SIDEBAR__ || {};
+
 function renderizarSidebar() {
     const usuario = window.__USUARIO__;
     const paginaActual = window.location.pathname;
@@ -78,10 +82,14 @@ function renderizarSidebar() {
             navHTML += `<div class="sidebar-seccion-titulo">${item.seccion}</div>`;
         } else {
             const activo = paginaActual === item.url || paginaActual.endsWith(item.url) ? 'activo' : '';
+            const badge = item.badgeKey
+                ? `<span class="sidebar-badge" data-badge="${item.badgeKey}" style="display:none;">0</span>`
+                : '';
             navHTML += `
                 <a href="${item.url}" class="sidebar-link ${activo}">
                     ${ICONOS[item.icono]}
                     <span>${item.nombre}</span>
+                    ${badge}
                 </a>
             `;
         }
@@ -126,6 +134,108 @@ function renderizarSidebar() {
 
     // Insertar al inicio del body
     document.body.insertAdjacentHTML('afterbegin', sidebarHTML);
+
+    // Cargar los badges en background (no bloquea la carga del sidebar)
+    cargarBadgesSidebar();
+}
+
+/**
+ * Setea el valor de un badge del sidebar. Lo muestra si > 0, oculta si 0.
+ * Usar desde cualquier página: actualizarBadgeSidebar('movimientos', 3);
+ */
+function actualizarBadgeSidebar(key, cantidad) {
+    window.__BADGES_SIDEBAR__[key] = cantidad;
+    const el = document.querySelector(`.sidebar-badge[data-badge="${key}"]`);
+    if (!el) return;
+    if (cantidad > 0) {
+        el.textContent = cantidad;
+        el.style.display = '';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+/**
+ * Calcula los valores iniciales de los badges con una query ligera.
+ * Hoy solo el de Movimientos: cuenta transferencias listas + vencidas
+ * (movimientos cuya transferencia no está cobrada/anulada y la fecha
+ * del movimiento es >= 7 días atrás).
+ */
+async function cargarBadgesSidebar() {
+    if (typeof db === 'undefined' || !db) return;
+    try {
+        // Fecha límite: hoy - 7 días (inclusive)
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        hoy.setDate(hoy.getDate() - 7);
+        const yyyy = hoy.getFullYear();
+        const mm   = String(hoy.getMonth() + 1).padStart(2, '0');
+        const dd   = String(hoy.getDate()).padStart(2, '0');
+        const limiteStr = `${yyyy}-${mm}-${dd}`;
+
+        const { data } = await db
+            .from('movimientos')
+            .select('fecha, transferencia:movimientos_tesoreria!movimiento_arrendamiento_id(estado)')
+            .lte('fecha', limiteStr);
+
+        let cant = 0;
+        (data || []).forEach(m => {
+            const t = Array.isArray(m.transferencia) ? m.transferencia[0] : m.transferencia;
+            if (!t) return;
+            if (t.estado === 'cobrado' || t.estado === 'anulado') return;
+            cant++;
+        });
+        actualizarBadgeSidebar('movimientos', cant);
+    } catch (err) {
+        // No interrumpir la app si falla
+        console.warn('No se pudieron cargar badges del sidebar:', err);
+    }
+}
+
+// ==============================================
+// Tarjeta visual de desglose QQ por estado de campaña
+// Usada en ficha de arrendador y ficha de grupo.
+// ==============================================
+
+/**
+ * Genera una tarjeta con borde de color para un estado de campaña
+ * (historica / actual / futura) con el subtotal y las filas de detalle.
+ *
+ * @param {'historica'|'actual'|'futura'} estado
+ * @param {Array<{campana, contrato, pendiente}>} filas
+ * @param {function} fmt  Función de formato de número
+ * @param {function} subtotal  Función que recibe filas y devuelve número
+ */
+function tarjetaEstadoQQ(estado, filas, fmt, subtotal) {
+    if (!filas || filas.length === 0) return '';
+    const meta = {
+        historica: { clase: 'desglose-historica', label: 'Histórica',  ayuda: 'Campañas vencidas no cobradas' },
+        actual:    { clase: 'desglose-actual',    label: 'Actual',     ayuda: 'Campaña en curso' },
+        futura:    { clase: 'desglose-futura',    label: 'Futura',     ayuda: 'Campañas por venir' }
+    }[estado];
+    const sub  = subtotal(filas);
+    const cant = filas.length;
+    const detalles = filas.map(f => `
+        <div class="desglose-fila-detalle">
+            <span class="desglose-fila-label">
+                <span class="desglose-fila-campana">${f.campana}</span>
+                <span class="desglose-fila-contrato">${f.contrato}</span>
+            </span>
+            <span class="desglose-fila-monto">${fmt(f.pendiente)}</span>
+        </div>
+    `).join('');
+    return `
+        <div class="desglose-tarjeta ${meta.clase}">
+            <div class="desglose-tarjeta-header">
+                <div class="desglose-tarjeta-titulo">
+                    <span class="desglose-tarjeta-label">${meta.label}</span>
+                    <span class="desglose-tarjeta-ayuda">${meta.ayuda} · ${cant} ${cant === 1 ? 'campaña' : 'campañas'}</span>
+                </div>
+                <div class="desglose-tarjeta-monto">${fmt(sub)}</div>
+            </div>
+            <div class="desglose-tarjeta-detalles">${detalles}</div>
+        </div>
+    `;
 }
 
 // ==============================================

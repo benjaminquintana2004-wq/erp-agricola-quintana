@@ -214,3 +214,21 @@
         display: none;
     }
 }
+
+
+/* ==============================================
+   SEMÁFORO PROMETIDO → EJECUTADO
+   Borde lateral en la fila según el estado del ciclo de pago.
+   ============================================== */
+
+.tabla tr.fila-listo > td:first-child {
+    border-left: 3px solid var(--color-alerta);
+}
+
+.tabla tr.fila-vencido > td:first-child {
+    border-left: 3px solid var(--color-error);
+}
+
+.tabla tr.fila-ejecutado {
+    opacity: 0.7;
+}

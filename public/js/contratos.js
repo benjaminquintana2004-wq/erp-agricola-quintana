@@ -2242,24 +2242,27 @@ async function guardarContrato() {
     }
 
     // --------------------------------------------------------------
-    // Paso 5: inicializar / ajustar saldo (ahora por contrato)
+    // Paso 5: inicializar / ajustar saldo
+    // - CREAR contrato: crear saldos para TODAS las campañas que solapan
+    //   con la vigencia del contrato (no solo la activa).
+    // - EDITAR contrato: si cambió qq_pactados, ajustar solo la campaña
+    //   activa (las viejas mantienen su histórico).
     // --------------------------------------------------------------
-    if (campanaId) {
-        if (!contratoEditandoId) {
-            await inicializarSaldoContrato(
-                contratoId,
-                campanaId,
-                parseFloat(qqPactados || 0),
-                parseFloat(qqNegroAnual || 0)
-            );
-        } else if (ajusteSaldoEdicion) {
-            await inicializarSaldoContrato(
-                contratoId,
-                campanaId,
-                ajusteSaldoEdicion.diffBlanco,
-                ajusteSaldoEdicion.diffNegro
-            );
-        }
+    if (!contratoEditandoId) {
+        await asegurarSaldosTodasCampanas(
+            contratoId,
+            fechaInicio,
+            fechaFin,
+            parseFloat(qqPactados || 0),
+            parseFloat(qqNegroAnual || 0)
+        );
+    } else if (ajusteSaldoEdicion && campanaId) {
+        await inicializarSaldoContrato(
+            contratoId,
+            campanaId,
+            ajusteSaldoEdicion.diffBlanco,
+            ajusteSaldoEdicion.diffNegro
+        );
     }
 
     cerrarModal();
@@ -2315,6 +2318,64 @@ async function inicializarSaldoContrato(contratoId, campanaId, qqBlanco, qqNegro
             }),
             'crear saldo inicial del contrato'
         );
+    }
+}
+
+/**
+ * Asegura que exista un saldo para una (contrato, campaña). Si ya existe,
+ * NO toca los valores (respeta los descuentos hechos por movimientos).
+ * Si no existe, crea uno con los qq pactados anuales.
+ *
+ * Esto es lo que se ejecuta al crear un contrato para auto-poblar saldos
+ * en TODAS las campañas que el contrato cubre.
+ */
+async function asegurarSaldoContratoCampana(contratoId, campanaId, qqBlancoPactado, qqNegroPactado) {
+    if (!contratoId || !campanaId) return;
+    const existentes = await ejecutarConsulta(
+        db.from('saldos').select('id')
+            .eq('contrato_id', contratoId)
+            .eq('campana_id', campanaId)
+            .limit(1),
+        'verificar saldo existente'
+    );
+    if (existentes && existentes.length > 0) return;   // ya existe, respetar
+    await ejecutarConsulta(
+        db.from('saldos').insert({
+            contrato_id: contratoId,
+            campana_id: campanaId,
+            qq_deuda_blanco: parseFloat(qqBlancoPactado || 0),
+            qq_deuda_negro: parseFloat(qqNegroPactado || 0)
+        }),
+        'asegurar saldo contrato/campaña'
+    );
+}
+
+/**
+ * Crea (si no existen) registros de saldo para TODAS las campañas que solapan
+ * con la vigencia del contrato. Se usa al crear un contrato nuevo: si el
+ * contrato va 2024-2027 y existen las campañas 2024/25, 2025/26 y 2026/27,
+ * se generan los 3 saldos iniciales con los qq pactados anuales del contrato.
+ *
+ * Convención: campaña X/Y va de 1-jul-X a 30-jun-Y. Solapa si los rangos
+ * se cruzan en algún día.
+ */
+async function asegurarSaldosTodasCampanas(contratoId, fechaInicio, fechaFin, qqBlancoAnual, qqNegroAnual) {
+    if (!contratoId || !fechaInicio || !fechaFin) return;
+
+    // Traer todas las campañas para evaluar solapamiento en código (más simple
+    // que armar el predicado SQL con fechas calculadas).
+    const todas = await ejecutarConsulta(
+        db.from('campanas').select('id, anio_inicio, anio_fin'),
+        'cargar campañas para inicialización'
+    ) || [];
+
+    for (const camp of todas) {
+        const iniStr = `${camp.anio_inicio}-07-01`;
+        const finStr = `${camp.anio_fin}-06-30`;
+        // Solapamiento: contrato.inicio <= campaña.fin Y contrato.fin >= campaña.inicio
+        if (fechaInicio <= finStr && fechaFin >= iniStr) {
+            await asegurarSaldoContratoCampana(contratoId, camp.id, qqBlancoAnual, qqNegroAnual);
+        }
     }
 }
 

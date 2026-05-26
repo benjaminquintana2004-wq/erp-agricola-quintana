@@ -9,9 +9,11 @@
 let movimientosCargados = [];
 let arrendadoresParaSelect = [];
 let contratosParaSelect = [];        // contratos con sus arrendadores vinculados
+let campanasParaSelect = [];         // todas las campañas (para el selector del modal)
 let movimientoEditandoId = null;
 let filtroTipoActual = 'todos';
 let filtroFacturaActual = null;
+let filtroEjecucionActual = 'todos';   // todos | en_curso | listo | vencido | ejecutado
 let filtroArrendadorId = null;        // id del arrendador a filtrar (viene de ?arrendador=X)
 let filtroArrendadorNombre = null;    // nombre mostrado en el chip
 let archivoPDFFactura = null;
@@ -31,14 +33,17 @@ async function cargarMovimientos() {
         </tr>
     `;
 
-    // Cargo en paralelo: movimientos + contratos vigentes con sus arrendadores
-    const [data, contratos, arrendadores] = await Promise.all([
+    // Cargo en paralelo: movimientos + contratos vigentes con sus arrendadores + campañas
+    const [data, contratos, arrendadores, campanas] = await Promise.all([
         ejecutarConsulta(
             db.from('movimientos')
                 .select(`
                     *,
                     arrendadores ( nombre, cuit ),
-                    contratos ( id, nombre_grupo, campo )
+                    contratos ( id, nombre_grupo, campo ),
+                    transferencia:movimientos_tesoreria!movimiento_arrendamiento_id (
+                        id, estado, fecha_cobro, fecha_cobrado_real, monto
+                    )
                 `)
                 .order('fecha', { ascending: false }),
             'cargar movimientos'
@@ -46,7 +51,7 @@ async function cargarMovimientos() {
         ejecutarConsulta(
             db.from('contratos')
                 .select(`
-                    id, nombre_grupo, campo, fecha_fin,
+                    id, nombre_grupo, campo, fecha_inicio, fecha_fin,
                     contratos_arrendadores (
                         arrendador_id,
                         es_titular_principal,
@@ -63,6 +68,12 @@ async function cargarMovimientos() {
                 .eq('activo', true)
                 .order('nombre'),
             'cargar arrendadores'
+        ),
+        ejecutarConsulta(
+            db.from('campanas')
+                .select('id, nombre, activa, anio_inicio, anio_fin')
+                .order('anio_inicio', { ascending: false }),
+            'cargar campañas'
         )
     ]);
 
@@ -74,15 +85,49 @@ async function cargarMovimientos() {
     if (contratos !== undefined) {
         contratosParaSelect = contratos;
     }
+    if (campanas !== undefined) {
+        campanasParaSelect = campanas;
+    }
 
     movimientosCargados = data;
 
     // Si la URL trae ?arrendador=X, activar filtro por arrendador una vez
     aplicarFiltroArrendadorDesdeURL();
 
+    // Si la URL trae ?ejec=listo|vencido|en_curso|ejecutado, aplicar filtro del semáforo
+    aplicarFiltroEjecucionDesdeURL();
+
     renderizarTabla(movimientosCargados);
     actualizarContadores(movimientosCargados);
     mostrarAlertasFacturas(movimientosCargados);
+
+    // Actualizar el badge del sidebar con datos frescos (listos + vencidos)
+    if (typeof actualizarBadgeSidebar === 'function') {
+        const urgentes = movimientosCargados.filter(m => {
+            const e = calcularEstadoEjecucion(m);
+            return e === 'prometido_listo' || e === 'prometido_vencido';
+        }).length;
+        actualizarBadgeSidebar('movimientos', urgentes);
+    }
+}
+
+/**
+ * Lee ?ejec=<estado> de la URL y aplica el filtro del semáforo una vez.
+ * Usado por las alertas del dashboard que linkean directo al estado urgente.
+ */
+function aplicarFiltroEjecucionDesdeURL() {
+    const params = new URLSearchParams(window.location.search);
+    const ejec = params.get('ejec');
+    const validos = ['todos', 'en_curso', 'listo', 'vencido', 'ejecutado'];
+    if (!validos.includes(ejec)) return;
+    filtroEjecucionActual = ejec;
+    document.querySelectorAll('.filtro-btn[data-ejec]').forEach(btn => {
+        btn.classList.toggle('activo', btn.dataset.ejec === ejec);
+    });
+    // Limpiar el query param para que un refresh no vuelva a aplicarlo
+    const url = new URL(window.location);
+    url.searchParams.delete('ejec');
+    window.history.replaceState({}, '', url);
 }
 
 /**
@@ -161,6 +206,20 @@ function renderizarTabla(movimientos) {
         mostrar = mostrar.filter(m => m.estado_factura === filtroFacturaActual);
     }
 
+    // Filtro por estado del ciclo Prometido → Ejecutado
+    if (filtroEjecucionActual && filtroEjecucionActual !== 'todos') {
+        const mapaFiltro = {
+            en_curso:  'prometido_en_curso',
+            listo:     'prometido_listo',
+            vencido:   'prometido_vencido',
+            ejecutado: 'ejecutado'
+        };
+        const estadoBuscado = mapaFiltro[filtroEjecucionActual];
+        if (estadoBuscado) {
+            mostrar = mostrar.filter(m => calcularEstadoEjecucion(m) === estadoBuscado);
+        }
+    }
+
     const tbody = document.getElementById('tabla-movimientos-body');
     const usuario = window.__USUARIO__;
     const puedeEditar = ['admin_total', 'admin'].includes(usuario?.rol);
@@ -169,7 +228,7 @@ function renderizarTabla(movimientos) {
     if (mostrar.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="tabla-vacia">
+                <td colspan="9" class="tabla-vacia">
                     No hay movimientos registrados
                     <p>Hacé click en "Nuevo Movimiento" para registrar una venta de quintales</p>
                 </td>
@@ -188,8 +247,28 @@ function renderizarTabla(movimientos) {
         const facturaBadge = obtenerBadgeFactura(m);
         const precioComparacion = compararPrecio(m);
 
+        // Semáforo del ciclo Prometido → Ejecutado
+        const estadoEjec = calcularEstadoEjecucion(m);
+        const estadoBadge = obtenerBadgeEstadoEjecucion(estadoEjec);
+        const t = transferenciaDe(m);
+        const filaClase =
+            estadoEjec === 'prometido_listo'   ? 'fila-listo'    :
+            estadoEjec === 'prometido_vencido' ? 'fila-vencido'  :
+            estadoEjec === 'ejecutado'         ? 'fila-ejecutado': '';
+
+        // Botón "Ejecutar" sólo cuando hay transferencia pendiente y está
+        // en estado amarillo o rojo (días >= 7). El verde (en curso) no muestra
+        // el botón para evitar ejecutar antes de tiempo.
+        const mostrarBtnEjec = puedeEditar && t && t.id
+            && (estadoEjec === 'prometido_listo' || estadoEjec === 'prometido_vencido');
+        const btnEjecutar = mostrarBtnEjec
+            ? `<button class="tabla-btn" style="color:var(--color-verde);" title="Ejecutar transferencia" onclick="confirmarEjecutarTransferencia('${t.id}', '${nombreArr.replace(/'/g, "\\'")}', ${Number(t.monto || total || 0)})">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polyline points="20 6 9 17 4 12"/></svg>
+               </button>`
+            : '';
+
         return `
-        <tr>
+        <tr class="${filaClase}">
             <td>${formatearFecha(m.fecha)}</td>
             <td>
                 <strong>${nombreArr}</strong>
@@ -204,12 +283,14 @@ function renderizarTabla(movimientos) {
             </td>
             <td>${total ? formatearMoneda(total, m.moneda) : '—'}</td>
             <td>${tipoBadge}</td>
+            <td>${estadoBadge}</td>
             <td>${facturaBadge}</td>
             <td>
                 <div class="tabla-acciones">
                     <button class="tabla-btn" onclick="verMovimiento('${m.id}')" title="Ver detalle">
                         ${ICONOS.ver}
                     </button>
+                    ${btnEjecutar}
                     ${puedeEditar ? `
                         <button class="tabla-btn" onclick="editarMovimiento('${m.id}')" title="Editar">
                             ${ICONOS.editar}
@@ -239,12 +320,113 @@ function obtenerBadgeFactura(mov) {
     return estados[mov.estado_factura] || '—';
 }
 
+/**
+ * Devuelve el primer registro de transferencia vinculada en formato objeto.
+ * El join de Supabase devuelve un array porque la columna FK no es UNIQUE,
+ * pero en la práctica siempre es 0 o 1.
+ */
+function transferenciaDe(mov) {
+    if (!mov || !mov.transferencia) return null;
+    if (Array.isArray(mov.transferencia)) return mov.transferencia[0] || null;
+    return mov.transferencia;
+}
+
+/**
+ * Calcula los días sin factura desde la fecha de EJECUCIÓN del pago (no
+ * desde la fecha del movimiento). Si todavía no se ejecutó la transferencia
+ * no se cuenta — la factura recién se espera después del pago real.
+ */
 function calcularDiasSinFactura(mov) {
     if (mov.estado_factura === 'factura_ok') return null;
+    const t = transferenciaDe(mov);
+    const fechaBase = t?.fecha_cobrado_real;
+    if (!fechaBase) return null;   // nunca se ejecutó: no hay factura esperada todavía
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
-    const fecha = new Date(mov.fecha + 'T00:00:00');
-    return Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24));
+    const f = new Date(fechaBase + 'T00:00:00');
+    return Math.floor((hoy - f) / (1000 * 60 * 60 * 24));
+}
+
+// ==============================================
+// CICLO PROMETIDO → EJECUTADO (semáforo de transferencias)
+// ==============================================
+
+/**
+ * Calcula el estado del ciclo de pago de un movimiento de arrendamiento.
+ * Devuelve uno de:
+ *   - 'efectivo'           (tipo='negro': pago en mano, no entra al ciclo bancario)
+ *   - 'ejecutado'          (transferencia.estado = 'cobrado')
+ *   - 'cancelado'          (transferencia.estado = 'anulado')
+ *   - 'sin_pago'           (blanco sin precio o movimiento previo a la integración)
+ *   - 'prometido_en_curso' (transferencia pendiente, 0-6 días desde fecha del mov)
+ *   - 'prometido_listo'    (pendiente, 7-9 días: hay que transferir)
+ *   - 'prometido_vencido'  (pendiente, 10+ días: atrasado)
+ */
+function calcularEstadoEjecucion(mov) {
+    // Negro = efectivo en mano, no genera registro en tesorería ni entra al
+    // semáforo de Prometido/Ejecutado.
+    if (mov.tipo === 'negro') return 'efectivo';
+
+    const t = transferenciaDe(mov);
+    if (!t) return 'sin_pago';
+    if (t.estado === 'cobrado')  return 'ejecutado';
+    if (t.estado === 'anulado')  return 'cancelado';
+    // Cualquier otro estado (pendiente, futuro) → calcular por días
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const f = new Date(mov.fecha + 'T00:00:00');
+    const dias = Math.floor((hoy - f) / (1000 * 60 * 60 * 24));
+    if (dias < 7)   return 'prometido_en_curso';
+    if (dias < 10)  return 'prometido_listo';
+    return 'prometido_vencido';
+}
+
+function obtenerBadgeEstadoEjecucion(estado) {
+    const mapa = {
+        efectivo:            '<span class="badge badge-gris">💵 Efectivo</span>',
+        ejecutado:           '<span class="badge badge-verde">✓ Ejecutado</span>',
+        cancelado:           '<span class="badge badge-gris">Cancelado</span>',
+        sin_pago:            '<span class="badge badge-gris">Sin pago</span>',
+        prometido_en_curso:  '<span class="badge badge-verde">🟢 En curso</span>',
+        prometido_listo:     '<span class="badge badge-amarillo">🟡 Listo</span>',
+        prometido_vencido:   '<span class="badge badge-rojo">🔴 Vencido</span>'
+    };
+    return mapa[estado] || '—';
+}
+
+/**
+ * Modal de confirmación previo a ejecutar una transferencia.
+ * Tras confirmar, marca el movimiento_tesoreria vinculado como 'cobrado'.
+ */
+function confirmarEjecutarTransferencia(transfId, nombreArr, monto) {
+    window.__transfEjecutar = transfId;
+    abrirModal('Ejecutar transferencia',
+        `<p style="font-size:var(--texto-base);color:var(--color-texto);">
+            ¿Confirmás que ya transferiste <strong>$ ${formatearNumero(monto)}</strong> a <strong>${nombreArr}</strong>?
+        </p>
+        <p style="font-size:var(--texto-sm);color:var(--color-texto-secundario);margin-top:var(--espacio-sm);">
+            El movimiento queda marcado como ejecutado y se actualiza el cobro en tesorería con la fecha de hoy.
+        </p>`,
+        `<button class="btn-secundario" onclick="cerrarModal()">Cancelar</button>
+         <button class="btn-primario" onclick="cerrarModal(); ejecutarTransferencia(window.__transfEjecutar)">Sí, ejecutar</button>`
+    );
+}
+
+/**
+ * Marca la transferencia como cobrada (equivalente al marcarCobrado()
+ * de tesoreria.js, replicado para no acoplar archivos).
+ */
+async function ejecutarTransferencia(transfId) {
+    if (!transfId) return;
+    const hoy = fechaHoyStr();
+    const r = await ejecutarConsulta(
+        db.from('movimientos_tesoreria')
+          .update({ estado: 'cobrado', fecha_cobrado_real: hoy })
+          .eq('id', transfId),
+        'ejecutar transferencia'
+    );
+    if (r === undefined) return;
+    mostrarExito('Transferencia ejecutada.');
+    await cargarMovimientos();
 }
 
 function compararPrecio(mov) {
@@ -283,6 +465,29 @@ function actualizarContadores(movimientos) {
     document.getElementById('cont-negro').textContent = conteos.negro;
     document.getElementById('cont-sin_factura').textContent = conteos.sin_factura;
     document.getElementById('cont-reclamada').textContent = conteos.reclamada;
+
+    // Contadores del semáforo Prometido → Ejecutado
+    const conteosEjec = {
+        todos: base.length,
+        en_curso: 0,
+        listo: 0,
+        vencido: 0,
+        ejecutado: 0
+    };
+    for (const m of base) {
+        const e = calcularEstadoEjecucion(m);
+        if (e === 'prometido_en_curso') conteosEjec.en_curso++;
+        else if (e === 'prometido_listo')    conteosEjec.listo++;
+        else if (e === 'prometido_vencido')  conteosEjec.vencido++;
+        else if (e === 'ejecutado')          conteosEjec.ejecutado++;
+        // 'sin_pago' y 'cancelado' no se cuentan en ninguna categoría visible
+    }
+    const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setText('cont-ejec-todos',     conteosEjec.todos);
+    setText('cont-ejec-en_curso',  conteosEjec.en_curso);
+    setText('cont-ejec-listo',     conteosEjec.listo);
+    setText('cont-ejec-vencido',   conteosEjec.vencido);
+    setText('cont-ejec-ejecutado', conteosEjec.ejecutado);
 }
 
 function actualizarContadorTexto(cantidad) {
@@ -296,7 +501,8 @@ function filtrarPorTipo(tipo) {
     filtroTipoActual = tipo;
     filtroFacturaActual = null;
 
-    document.querySelectorAll('.filtro-btn').forEach(btn => {
+    // Sólo tocar botones con data-filtro (no los del semáforo data-ejec)
+    document.querySelectorAll('.filtro-btn[data-filtro]').forEach(btn => {
         btn.classList.toggle('activo', btn.dataset.filtro === tipo);
     });
 
@@ -307,16 +513,28 @@ function filtrarPorFactura(estado) {
     // Si ya está activo, desactivar
     if (filtroFacturaActual === estado) {
         filtroFacturaActual = null;
-        document.querySelectorAll('.filtro-btn').forEach(btn => {
+        document.querySelectorAll('.filtro-btn[data-filtro]').forEach(btn => {
             btn.classList.toggle('activo', btn.dataset.filtro === filtroTipoActual);
         });
     } else {
         filtroFacturaActual = estado;
-        document.querySelectorAll('.filtro-btn').forEach(btn => {
+        document.querySelectorAll('.filtro-btn[data-filtro]').forEach(btn => {
             btn.classList.toggle('activo', btn.dataset.filtro === estado);
         });
     }
 
+    renderizarTabla(movimientosCargados);
+}
+
+/**
+ * Cambia el filtro del semáforo Prometido → Ejecutado.
+ * Sólo afecta a los botones con data-ejec (no confundir con data-filtro).
+ */
+function filtrarPorEjecucion(estado) {
+    filtroEjecucionActual = estado;
+    document.querySelectorAll('.filtro-btn[data-ejec]').forEach(btn => {
+        btn.classList.toggle('activo', btn.dataset.ejec === estado);
+    });
     renderizarTabla(movimientosCargados);
 }
 
@@ -430,6 +648,14 @@ function abrirModalMovimiento(titulo, datos) {
     // Arrendadores del contrato seleccionado (si hay)
     const opcionesArrendadores = construirOpcionesArrendadoresPorContrato(contratoIdSel, datos.arrendador_id);
 
+    // Campañas: el default al crear es la campaña activa. Al editar, se respeta
+    // la campana_id que ya tenía el movimiento (o la activa si está en NULL).
+    const campanaActiva = campanasParaSelect.find(c => c.activa);
+    const campanaIdSel = datos.campana_id || campanaActiva?.id || '';
+    const opcionesCampanas = campanasParaSelect.map(c =>
+        `<option value="${c.id}" ${campanaIdSel === c.id ? 'selected' : ''}>${c.nombre}${c.activa ? ' (activa)' : ''}</option>`
+    ).join('');
+
     const hoy = fechaHoyStr();
 
     // Sección de PDF de factura
@@ -453,6 +679,14 @@ function abrirModalMovimiento(titulo, datos) {
 
     const contenido = `
         <div class="form-seccion-titulo">Datos del movimiento</div>
+
+        <div class="campo-grupo">
+            <label class="campo-label">Campaña <span class="campo-requerido">*</span></label>
+            <select id="campo-campana" class="campo-select">
+                ${campanasParaSelect.length === 0 ? '<option value="">Sin campañas cargadas</option>' : opcionesCampanas}
+            </select>
+            <span class="campo-ayuda">A qué campaña se imputa el pago. Útil para cargar pagos viejos o adelantos a la próxima.</span>
+        </div>
 
         <div class="campo-grupo">
             <label class="campo-label">Contrato <span class="campo-requerido">*</span></label>
@@ -592,6 +826,19 @@ function abrirModalMovimiento(titulo, datos) {
 
     // Configurar drag and drop
     configurarDragDropFactura();
+
+    // Si abrimos el modal con un contrato ya seleccionado (caso edición o
+    // navegación con contrato pre-cargado), filtrar las campañas según ese
+    // contrato. Respeta la selección original si sigue siendo válida.
+    if (contratoIdSel) {
+        actualizarCampanasPorContrato(contratoIdSel);
+        // Restaurar la selección original si quedó pisada por el filtro
+        const selCampana = document.getElementById('campo-campana');
+        if (selCampana && datos.campana_id) {
+            const opcion = [...selCampana.options].find(o => o.value === datos.campana_id);
+            if (opcion) selCampana.value = datos.campana_id;
+        }
+    }
 }
 
 /**
@@ -634,6 +881,9 @@ function actualizarArrendadoresPorContrato() {
     const contratoId = selContrato.value;
     const opciones = construirOpcionesArrendadoresPorContrato(contratoId, null);
 
+    // Refrescar también las campañas disponibles según la vigencia del contrato
+    actualizarCampanasPorContrato(contratoId);
+
     if (!contratoId) {
         selArrendador.innerHTML = '<option value="">Elegí primero un contrato</option>';
         selArrendador.disabled = true;
@@ -651,6 +901,53 @@ function actualizarArrendadoresPorContrato() {
         const unico = contrato.contratos_arrendadores[0]?.arrendadores?.id;
         if (unico) selArrendador.value = unico;
     }
+}
+
+/**
+ * Devuelve las campañas que solapan con la vigencia del contrato.
+ * Una campaña X/Y solapa si el rango [anio_inicio, anio_fin] se cruza
+ * con los años de [contrato.fecha_inicio, contrato.fecha_fin].
+ * Si no hay contrato o no tiene fechas, devuelve todas.
+ */
+function campanasParaContrato(contratoId) {
+    if (!contratoId || campanasParaSelect.length === 0) return campanasParaSelect;
+    const c = contratosParaSelect.find(x => x.id === contratoId);
+    if (!c || !c.fecha_inicio || !c.fecha_fin) return campanasParaSelect;
+
+    const yIni = parseInt(c.fecha_inicio.slice(0, 4), 10);
+    const yFin = parseInt(c.fecha_fin.slice(0, 4), 10);
+    if (!Number.isFinite(yIni) || !Number.isFinite(yFin)) return campanasParaSelect;
+
+    return campanasParaSelect.filter(camp =>
+        (camp.anio_fin >= yIni) && (camp.anio_inicio <= yFin)
+    );
+}
+
+/**
+ * Re-renderiza el select de campaña filtrando por la vigencia del contrato.
+ * Mantiene la selección actual si todavía es válida, sino selecciona la
+ * activa o la primera disponible.
+ */
+function actualizarCampanasPorContrato(contratoId) {
+    const selCampana = document.getElementById('campo-campana');
+    if (!selCampana) return;
+
+    const valorActual = selCampana.value;
+    const disponibles = campanasParaContrato(contratoId);
+
+    if (disponibles.length === 0) {
+        selCampana.innerHTML = '<option value="">Sin campañas que solapen con este contrato</option>';
+        return;
+    }
+
+    // Si el valor actual sigue siendo válido, lo respetamos
+    const sigueValido = disponibles.some(c => c.id === valorActual);
+    const activa = disponibles.find(c => c.activa);
+    const seleccion = sigueValido ? valorActual : (activa?.id || disponibles[0].id);
+
+    selCampana.innerHTML = disponibles.map(c =>
+        `<option value="${c.id}" ${seleccion === c.id ? 'selected' : ''}>${c.nombre}${c.activa ? ' (activa)' : ''}</option>`
+    ).join('');
 }
 
 function seleccionarTipo(label, tipo) {
@@ -1031,6 +1328,7 @@ async function verPDFFactura(pdfPath) {
 async function guardarMovimiento() {
     const contratoId = document.getElementById('campo-contrato')?.value;
     const arrendadorId = document.getElementById('campo-arrendador')?.value;
+    const campanaId = document.getElementById('campo-campana')?.value || null;
     const tipo = document.querySelector('input[name="tipo"]:checked')?.value;
     const fecha = ddmmAISO(document.getElementById('campo-fecha')?.value);
     const qq = document.getElementById('campo-qq')?.value;
@@ -1050,6 +1348,10 @@ async function guardarMovimiento() {
     }
     if (!arrendadorId) {
         mostrarError('Seleccioná quién factura (arrendador del contrato).');
+        return;
+    }
+    if (!campanaId) {
+        mostrarError('Seleccioná la campaña a la que se imputa el pago.');
         return;
     }
     if (!tipo) {
@@ -1099,6 +1401,7 @@ async function guardarMovimiento() {
     const datosMovimiento = {
         contrato_id: contratoId,
         arrendador_id: arrendadorId,
+        campana_id: campanaId,
         fecha: fecha,
         qq: parseFloat(qq),
         precio_quintal: precio ? parseFloat(precio) : null,
@@ -1118,23 +1421,36 @@ async function guardarMovimiento() {
     let resultado;
 
     if (movimientoEditandoId) {
+        // Capturar valores anteriores ANTES del update para ajustar saldos si
+        // cambió la campaña, el contrato, el tipo o la cantidad.
+        const previo = movimientosCargados.find(m => m.id === movimientoEditandoId);
+
         resultado = await ejecutarConsulta(
             db.from('movimientos').update(datosMovimiento).eq('id', movimientoEditandoId).select(),
             'actualizar movimiento'
         );
+
+        if (resultado !== undefined && previo) {
+            // Revertir el descuento viejo (contrato + campana + tipo previos)
+            const campanaPrevia = previo.campana_id || (campanasParaSelect.find(c => c.activa)?.id);
+            await revertirSaldoMovimiento(previo.contrato_id, previo.tipo, parseFloat(previo.qq), campanaPrevia);
+            // Aplicar el descuento nuevo
+            await actualizarSaldo(contratoId, tipo, parseFloat(qq), campanaId);
+        }
     } else {
         resultado = await ejecutarConsulta(
             db.from('movimientos').insert(datosMovimiento).select(),
             'crear movimiento'
         );
 
-        // Actualizar saldo del CONTRATO y crear transferencia en tesorería
+        // Actualizar saldo del CONTRATO y, si es BLANCO con precio, crear la
+        // transferencia pendiente en tesorería (fecha de cobro = fecha + 7 días).
+        // NEGRO no genera transferencia bancaria: es efectivo en mano,
+        // se maneja al margen del banco para no ensuciar la conciliación.
         if (resultado && resultado.length > 0) {
-            await actualizarSaldo(contratoId, tipo, parseFloat(qq));
+            await actualizarSaldo(contratoId, tipo, parseFloat(qq), campanaId);
 
-            // Solo si tiene precio: crear la transferencia pendiente en tesorería
-            // (fecha de cobro = fecha del aviso + 7 días, según la regla del negocio)
-            if (precio && parseFloat(precio) > 0) {
+            if (tipo === 'blanco' && precio && parseFloat(precio) > 0) {
                 await crearTransferenciaTesoreria(
                     resultado[0].id,
                     arrendadorId,
@@ -1187,17 +1503,21 @@ async function subirPDFFactura(archivo, arrendadorNombre) {
 // ==============================================
 
 /**
- * Descuenta los qq del saldo del CONTRATO para la campaña activa.
- * Si no existe el registro de saldo, lo crea inicializándolo con los
- * qq pactados del contrato y luego descontando.
+ * Descuenta los qq del saldo del CONTRATO para la campaña dada.
+ * Si campanaId es null/undefined, busca la activa como fallback.
+ * Si no existe el registro de saldo para esa campaña, lo crea inicializándolo
+ * con los qq pactados del contrato y luego descontando.
  */
-async function actualizarSaldo(contratoId, tipo, qq) {
-    const campanas = await ejecutarConsulta(
-        db.from('campanas').select('id').eq('activa', true).limit(1),
-        'obtener campaña activa'
-    );
-
-    const campanaId = campanas?.[0]?.id;
+async function actualizarSaldo(contratoId, tipo, qq, campanaId) {
+    // Fallback a campaña activa si no se especifica (compatibilidad con
+    // movimientos viejos que no tienen campana_id).
+    if (!campanaId) {
+        const campanas = await ejecutarConsulta(
+            db.from('campanas').select('id').eq('activa', true).limit(1),
+            'obtener campaña activa'
+        );
+        campanaId = campanas?.[0]?.id;
+    }
     if (!campanaId) return;
 
     const saldos = await ejecutarConsulta(
@@ -1360,6 +1680,27 @@ function verMovimiento(id) {
 
 function confirmarEliminarMovimiento(id, nombreArrendador) {
     window.__idEliminarMovimiento = id;
+
+    // Si hay una transferencia ya ejecutada, advertir explícitamente.
+    const mov = movimientosCargados.find(m => m.id === id);
+    const t = transferenciaDe(mov);
+    let avisoExtra = '';
+    if (t && t.id) {
+        if (t.estado === 'cobrado') {
+            avisoExtra = `
+                <p style="margin-top: var(--espacio-md); padding: var(--espacio-sm); background: rgba(232,183,74,0.10); border:1px solid #e8b74a; border-radius: var(--radio-sm,4px); font-size: var(--texto-sm); color: #e8b74a;">
+                    ⚠️ Este movimiento ya tiene una transferencia <strong>ejecutada</strong> en tesorería. Al eliminar también se borra la transferencia. Si solo querés deshacer el movimiento de qq, considerá editarlo en vez de eliminarlo.
+                </p>
+            `;
+        } else {
+            avisoExtra = `
+                <p style="margin-top: var(--espacio-sm); font-size: var(--texto-sm); color: var(--color-texto-tenue);">
+                    Se eliminará también la transferencia vinculada en tesorería (estado: ${t.estado}).
+                </p>
+            `;
+        }
+    }
+
     const contenido = `
         <p style="font-size: var(--texto-lg); color: var(--color-texto); margin-bottom: var(--espacio-md);">
             ¿Seguro que querés eliminar este movimiento de <strong>${nombreArrendador}</strong>?
@@ -1368,6 +1709,7 @@ function confirmarEliminarMovimiento(id, nombreArrendador) {
             Los qq se devolverán automáticamente al saldo del arrendador.
             Esta acción no se puede deshacer.
         </p>
+        ${avisoExtra}
     `;
     const footer = `
         <button class="btn-secundario" onclick="cerrarModal()">Cancelar</button>
@@ -1379,34 +1721,50 @@ function confirmarEliminarMovimiento(id, nombreArrendador) {
 }
 
 async function eliminarMovimiento(id) {
-    // Obtener los datos del movimiento ANTES de borrarlo (para revertir el saldo)
+    // Obtener los datos del movimiento ANTES de borrarlo (para revertir el saldo
+    // y limpiar la transferencia vinculada en tesorería).
     const mov = movimientosCargados.find(m => m.id === id);
 
+    // 1) Borrar la transferencia vinculada en tesorería (si existe).
+    //    El FK movimiento_arrendamiento_id es ON DELETE SET NULL, así que si
+    //    no la borramos antes queda huérfana en tesorería con el FK en null.
+    const t = transferenciaDe(mov);
+    if (t && t.id) {
+        await ejecutarConsulta(
+            db.from('movimientos_tesoreria').delete().eq('id', t.id),
+            'eliminar transferencia vinculada'
+        );
+    }
+
+    // 2) Borrar el movimiento
     const resultado = await ejecutarConsulta(
         db.from('movimientos').delete().eq('id', id),
         'eliminar movimiento'
     );
 
     if (resultado !== undefined) {
-        // Devolver los qq al saldo del contrato
+        // 3) Devolver los qq al saldo de la campaña a la que estaba imputado
         if (mov && mov.contrato_id && mov.qq) {
-            await revertirSaldoMovimiento(mov.contrato_id, mov.tipo, parseFloat(mov.qq));
+            await revertirSaldoMovimiento(mov.contrato_id, mov.tipo, parseFloat(mov.qq), mov.campana_id);
         }
-        mostrarExito('Movimiento eliminado y saldo revertido');
+        mostrarExito(t ? 'Movimiento, transferencia y saldo revertidos' : 'Movimiento eliminado y saldo revertido');
         await cargarMovimientos();
     }
 }
 
 /**
- * Devuelve qq al saldo del contrato (usado al eliminar un movimiento).
- * Suma los qq a la columna correspondiente (blanco o negro) de la campaña activa.
+ * Devuelve qq al saldo del contrato (usado al eliminar/editar un movimiento).
+ * Suma los qq a la columna correspondiente (blanco o negro) de la campaña dada.
+ * Si campanaId es null/undefined (movimiento viejo), cae a la campaña activa.
  */
-async function revertirSaldoMovimiento(contratoId, tipo, qq) {
-    const campanas = await ejecutarConsulta(
-        db.from('campanas').select('id').eq('activa', true).limit(1),
-        'obtener campaña activa'
-    );
-    const campanaId = campanas?.[0]?.id;
+async function revertirSaldoMovimiento(contratoId, tipo, qq, campanaId) {
+    if (!campanaId) {
+        const campanas = await ejecutarConsulta(
+            db.from('campanas').select('id').eq('activa', true).limit(1),
+            'obtener campaña activa'
+        );
+        campanaId = campanas?.[0]?.id;
+    }
     if (!campanaId) return;
 
     const saldos = await ejecutarConsulta(
@@ -1483,6 +1841,15 @@ async function crearTransferenciaTesoreria(movimientoId, arrendadorId, fechaAvis
         const arrendador = arrendadoresParaSelect.find(a => a.id === arrendadorId);
         const nombreArr = arrendador?.nombre || 'Arrendador';
 
+        // Resolver beneficiario_id (busca el existente o crea uno nuevo del tipo
+        // 'arrendador'). Así la transferencia se ve linda en tesorería con el
+        // nombre del arrendador en la columna correcta en vez de solo en notas.
+        const beneficiarioId = await obtenerOCrearBeneficiarioArrendador(arrendadorId, nombreArr);
+
+        // Resolver categoría: si existe una categoría con "arrendamiento" en el
+        // nombre, la usamos. Si no, queda null.
+        const categoriaId = await obtenerCategoriaArrendamiento();
+
         const monto = qq * precioQQ;
 
         const transferencia = {
@@ -1492,11 +1859,13 @@ async function crearTransferenciaTesoreria(movimientoId, arrendadorId, fechaAvis
             fecha_emision:              fechaAviso,
             fecha_cobro:                fechaCobroStr,
             fecha_balde:                fechaBaldeStr,
+            beneficiario_id:            beneficiarioId,
+            categoria_id:               categoriaId,
             monto:                      Math.round(monto * 100) / 100,
             estado:                     'pendiente',
             origen:                     'auto_arrendamiento',
             movimiento_arrendamiento_id: movimientoId,
-            notas:                      `Pago a ${nombreArr} — ${qq} qq × $${precioQQ.toLocaleString('es-AR')}/qq`
+            notas:                      `${qq} qq × $${precioQQ.toLocaleString('es-AR')}/qq`
         };
 
         await ejecutarConsulta(
@@ -1510,5 +1879,57 @@ async function crearTransferenciaTesoreria(movimientoId, arrendadorId, fechaAvis
     } catch (err) {
         // No interrumpir el flujo principal si falla la integración con tesorería
         console.error('No se pudo crear la transferencia en tesorería:', err);
+    }
+}
+
+/**
+ * Busca el beneficiario tipo='arrendador' del arrendador dado.
+ * Si no existe, lo crea. Devuelve el beneficiario_id o null si falla.
+ */
+async function obtenerOCrearBeneficiarioArrendador(arrendadorId, nombreFallback) {
+    if (!arrendadorId) return null;
+    try {
+        // 1) Buscar uno existente
+        const existentes = await ejecutarConsulta(
+            db.from('beneficiarios')
+              .select('id')
+              .eq('arrendador_id', arrendadorId)
+              .limit(1),
+            'buscar beneficiario arrendador'
+        );
+        if (existentes && existentes.length > 0) return existentes[0].id;
+
+        // 2) No existe: crear
+        const nuevos = await ejecutarConsulta(
+            db.from('beneficiarios').insert({
+                nombre:        nombreFallback || 'Arrendador',
+                tipo:          'arrendador',
+                arrendador_id: arrendadorId
+            }).select(),
+            'crear beneficiario arrendador'
+        );
+        return nuevos?.[0]?.id || null;
+    } catch (err) {
+        console.warn('No se pudo resolver beneficiario para arrendador:', err);
+        return null;
+    }
+}
+
+/**
+ * Busca una categoría de gasto cuyo nombre contenga "arrendamiento".
+ * Si no encuentra ninguna, devuelve null (la transferencia queda sin categoría).
+ */
+async function obtenerCategoriaArrendamiento() {
+    try {
+        const cats = await ejecutarConsulta(
+            db.from('categorias_gasto')
+              .select('id')
+              .ilike('nombre', '%arrendamiento%')
+              .limit(1),
+            'buscar categoría arrendamiento'
+        );
+        return cats?.[0]?.id || null;
+    } catch (err) {
+        return null;
     }
 }

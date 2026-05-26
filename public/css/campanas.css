@@ -88,8 +88,8 @@
 /* Stats */
 .campana-stats {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--espacio-md);
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--espacio-sm) var(--espacio-md);
     padding: var(--espacio-md) 0;
     border-top: 1px solid var(--color-borde);
     border-bottom: 1px solid var(--color-borde);
@@ -103,14 +103,15 @@
 }
 
 .campana-stat-valor {
-    font-size: var(--texto-2xl);
+    font-size: var(--texto-xl);
     font-weight: 700;
     color: var(--color-texto);
     letter-spacing: -0.02em;
     line-height: 1.1;
 }
 
-.campana-tarjeta-activa .campana-stat:nth-child(2) .campana-stat-valor {
+/* En la campaña actual, resaltamos el valor de QQ pendientes (último stat) */
+.campana-tarjeta-activa .campana-stat:last-child .campana-stat-valor {
     color: var(--color-dorado);
 }
 
@@ -222,4 +223,99 @@
     .campana-btn-eliminar {
         max-width: none;
     }
+}
+
+
+/* ==============================================
+   MENÚ KEBAB DE CAMPAÑA (⋮)
+   ============================================== */
+
+.campana-menu {
+    position: relative;
+    display: inline-block;
+}
+
+.campana-menu summary.campana-menu-btn {
+    list-style: none;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radio-sm, 4px);
+    color: var(--color-texto-secundario);
+    font-size: 20px;
+    font-weight: bold;
+    line-height: 1;
+    user-select: none;
+    transition: background-color var(--transicion-rapida);
+}
+
+.campana-menu summary.campana-menu-btn::-webkit-details-marker {
+    display: none;
+}
+
+.campana-menu summary.campana-menu-btn::marker {
+    display: none;
+}
+
+.campana-menu summary.campana-menu-btn:hover {
+    background-color: var(--color-fondo-hover);
+    color: var(--color-texto);
+}
+
+.campana-menu[open] summary.campana-menu-btn {
+    background-color: var(--color-fondo-hover);
+    color: var(--color-dorado);
+}
+
+.campana-menu-items {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 180px;
+    background-color: var(--color-fondo-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-md);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    padding: 4px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.campana-menu-items button {
+    display: flex;
+    align-items: center;
+    gap: var(--espacio-sm);
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--color-texto);
+    font-size: var(--texto-sm);
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radio-sm, 4px);
+    transition: background-color var(--transicion-rapida);
+}
+
+.campana-menu-items button:hover {
+    background-color: var(--color-fondo-hover);
+}
+
+.campana-menu-items button svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.campana-menu-items button.campana-menu-item-peligro {
+    color: var(--color-error);
+}
+
+.campana-menu-items button.campana-menu-item-peligro:hover {
+    background-color: rgba(201, 76, 76, 0.10);
 }

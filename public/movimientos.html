@@ -54,6 +54,28 @@
                         <span class="filtro-contador" id="cont-reclamada">0</span>
                     </button>
                 </div>
+                <div class="filtros-fila" style="margin-top: var(--espacio-sm);">
+                    <button class="filtro-btn activo" data-ejec="todos" onclick="filtrarPorEjecucion('todos')">
+                        Todos los estados
+                        <span class="filtro-contador" id="cont-ejec-todos">0</span>
+                    </button>
+                    <button class="filtro-btn" data-ejec="en_curso" onclick="filtrarPorEjecucion('en_curso')">
+                        🟢 En curso
+                        <span class="filtro-contador" id="cont-ejec-en_curso">0</span>
+                    </button>
+                    <button class="filtro-btn" data-ejec="listo" onclick="filtrarPorEjecucion('listo')">
+                        🟡 Listos
+                        <span class="filtro-contador" id="cont-ejec-listo">0</span>
+                    </button>
+                    <button class="filtro-btn" data-ejec="vencido" onclick="filtrarPorEjecucion('vencido')">
+                        🔴 Vencidos
+                        <span class="filtro-contador" id="cont-ejec-vencido">0</span>
+                    </button>
+                    <button class="filtro-btn" data-ejec="ejecutado" onclick="filtrarPorEjecucion('ejecutado')">
+                        ✓ Ejecutados
+                        <span class="filtro-contador" id="cont-ejec-ejecutado">0</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Chip de filtro por arrendador (desde ?arrendador=X) -->
@@ -90,8 +112,9 @@
                             <th>Precio/qq</th>
                             <th>Total</th>
                             <th>Tipo</th>
+                            <th>Estado pago</th>
                             <th>Factura</th>
-                            <th style="width: 120px;">Acciones</th>
+                            <th style="width: 140px;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-movimientos-body">

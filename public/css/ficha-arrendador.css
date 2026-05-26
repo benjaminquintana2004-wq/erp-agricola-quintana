@@ -462,6 +462,154 @@
     text-align: center;
 }
 
+/* Wrapper genérico de sección dentro de la ficha */
+.ficha-seccion {
+    margin-bottom: var(--espacio-lg);
+}
+
+/* ==============================================
+   DESGLOSE QQ POR CAMPAÑA
+   Tarjetas con borde de color según estado
+   ============================================== */
+
+.desglose-campanas {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-sm);
+    margin-bottom: var(--espacio-md);
+}
+
+/* Tarjeta base */
+.desglose-tarjeta {
+    border-radius: var(--radio-md);
+    border: 1px solid var(--color-borde);
+    border-left-width: 3px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.02);
+}
+
+.desglose-historica { border-left-color: var(--color-error); }
+.desglose-actual    { border-left-color: var(--color-verde); }
+.desglose-futura    { border-left-color: #e8b74a; }
+
+/* Header de cada tarjeta: título + subtotal */
+.desglose-tarjeta-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: var(--espacio-sm) var(--espacio-md);
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.desglose-historica .desglose-tarjeta-header { background: rgba(220, 38, 38, 0.06); }
+.desglose-actual    .desglose-tarjeta-header { background: rgba(74, 158, 110, 0.06); }
+.desglose-futura    .desglose-tarjeta-header { background: rgba(232, 183, 74, 0.06); }
+
+.desglose-tarjeta-titulo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.desglose-tarjeta-label {
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.desglose-historica .desglose-tarjeta-label { color: var(--color-error); }
+.desglose-actual    .desglose-tarjeta-label { color: var(--color-verde); }
+.desglose-futura    .desglose-tarjeta-label { color: #e8b74a; }
+
+.desglose-tarjeta-ayuda {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+}
+
+.desglose-tarjeta-monto {
+    font-size: var(--texto-lg);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.desglose-historica .desglose-tarjeta-monto { color: var(--color-error); }
+.desglose-actual    .desglose-tarjeta-monto { color: var(--color-verde); }
+.desglose-futura    .desglose-tarjeta-monto { color: #e8b74a; }
+
+/* Filas de detalle dentro de cada tarjeta */
+.desglose-tarjeta-detalles {
+    padding: var(--espacio-xs) var(--espacio-md);
+}
+
+.desglose-fila-detalle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--espacio-sm);
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.desglose-fila-detalle:last-child {
+    border-bottom: none;
+}
+
+.desglose-fila-label {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.desglose-fila-campana {
+    font-size: var(--texto-sm);
+    color: var(--color-texto);
+    font-weight: 500;
+}
+
+.desglose-fila-contrato {
+    font-size: var(--texto-xs);
+    color: var(--color-texto-tenue);
+}
+
+.desglose-fila-monto {
+    font-size: var(--texto-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-texto-secundario);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Footer de totales */
+.desglose-total {
+    border-top: 1px solid var(--color-borde);
+    padding-top: var(--espacio-sm);
+    margin-top: var(--espacio-xs);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.desglose-total-fila {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--espacio-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.desglose-total-fila-secundaria {
+    font-size: var(--texto-sm);
+    color: var(--color-texto-tenue);
+}
+
+.desglose-total-fila-principal {
+    font-size: var(--texto-lg);
+    font-weight: 700;
+    color: var(--color-dorado);
+}
+
 /* Responsive */
 @media (max-width: 640px) {
     .ficha-campana-cifras {

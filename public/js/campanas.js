@@ -1,70 +1,204 @@
 // ==============================================
-// campanas.js — CRUD de campañas agrícolas
-// Crear, activar/desactivar y eliminar campañas.
-// Solo una campaña puede estar activa a la vez.
+// campanas.js — Campañas agrícolas
+// El estado (Histórica / Actual / Futura) se calcula por las fechas.
+// El flag campanas.activa se sincroniza automáticamente con la actual,
+// para que el resto del ERP (que filtra por .eq('activa', true)) siga
+// funcionando sin cambios.
 // ==============================================
 
 let campanasCargadas = [];
+
+// ==============================================
+// Helpers — Estado calculado por fechas
+// ==============================================
+
+/**
+ * Devuelve el rango [inicio, fin] de una campaña como objetos Date.
+ * Convención argentina: campaña 2024/25 = 1-jul-2024 → 30-jun-2025.
+ */
+function rangoCampana(c) {
+    const inicio = new Date(c.anio_inicio, 6, 1);    // 1 de julio
+    const fin    = new Date(c.anio_fin, 5, 30, 23, 59, 59);   // 30 de junio
+    return { inicio, fin };
+}
+
+/**
+ * Calcula el estado real de la campaña según la fecha de hoy.
+ * Devuelve 'historica' | 'actual' | 'futura'.
+ */
+function calcularEstadoCampana(c) {
+    const hoy = new Date();
+    const { inicio, fin } = rangoCampana(c);
+    if (hoy < inicio) return 'futura';
+    if (hoy > fin)    return 'historica';
+    return 'actual';
+}
+
+/**
+ * Sincroniza el flag .activa en BD con la campaña que cubre el día de hoy.
+ * Si la activa actual coincide con lo que diría el cálculo, no hace nada.
+ * Devuelve el id de la campaña que quedó activa, o null si no hay ninguna que cubra hoy.
+ */
+async function sincronizarCampanaActiva(campanas) {
+    const deberiaSerActiva = campanas.find(c => calcularEstadoCampana(c) === 'actual');
+    if (!deberiaSerActiva) return null;
+
+    const yaEstaBien = deberiaSerActiva.activa &&
+        campanas.every(c => c.id === deberiaSerActiva.id || !c.activa);
+    if (yaEstaBien) return deberiaSerActiva.id;
+
+    // Hay que corregir: poner activa la correcta y desactivar las demás.
+    await ejecutarConsulta(
+        db.from('campanas').update({ activa: false }).neq('id', deberiaSerActiva.id),
+        'desactivar campañas viejas'
+    );
+    await ejecutarConsulta(
+        db.from('campanas').update({ activa: true }).eq('id', deberiaSerActiva.id),
+        'activar campaña actual'
+    );
+
+    // Actualizar el cache local para que el render refleje el cambio
+    campanas.forEach(c => { c.activa = (c.id === deberiaSerActiva.id); });
+    return deberiaSerActiva.id;
+}
 
 // ==============================================
 // LEER — Cargar campañas
 // ==============================================
 
 async function cargarCampanas() {
-    const data = await ejecutarConsulta(
-        db.from('campanas')
-            .select('*')
-            .order('anio_inicio', { ascending: false }),
-        'cargar campañas'
-    );
+    const [data, contratos, movimientos] = await Promise.all([
+        ejecutarConsulta(
+            db.from('campanas')
+                .select('*')
+                .order('anio_inicio', { ascending: false }),
+            'cargar campañas'
+        ),
+        // Traemos TODOS los contratos vigentes (no filtramos por campaña) para
+        // luego calcular el solapamiento por fechas en código.
+        ejecutarConsulta(
+            db.from('contratos')
+                .select('id, fecha_inicio, fecha_fin, hectareas, qq_pactados_anual, qq_negro_anual, contratos_arrendadores(arrendador_id)'),
+            'cargar contratos para stats de campañas'
+        ),
+        // Movimientos imputados a cada campaña: necesarios para calcular
+        // el saldo dinámico (pactado − pagado).
+        ejecutarConsulta(
+            db.from('movimientos')
+                .select('campana_id, contrato_id, tipo, qq'),
+            'cargar movimientos para stats de campañas'
+        )
+    ]);
 
     if (data === undefined) return;
 
-    // Para cada campaña, contar contratos y saldos asociados
-    const conStats = await Promise.all(data.map(async (c) => {
-        const [contratos, saldos] = await Promise.all([
-            // Contratos de esta campaña con su pivot — para contar arrendadores únicos
-            ejecutarConsulta(
-                db.from('contratos')
-                    .select('id, contratos_arrendadores(arrendador_id)')
-                    .eq('campana_id', c.id),
-                'contar contratos campaña'
-            ),
-            ejecutarConsulta(
-                db.from('saldos')
-                    .select('id, qq_deuda_blanco, qq_deuda_negro')
-                    .eq('campana_id', c.id),
-                'contar saldos'
-            )
-        ]);
+    // Sincronizar la actual antes de calcular stats (así el badge "Activa" coincide)
+    await sincronizarCampanaActiva(data);
 
-        // Arrendadores únicos con contrato en esta campaña (via pivot N:N)
+    const conStats = data.map((c) => {
+        // Contratos cuya vigencia solapa con el rango de la campaña
+        const { inicio: ini, fin } = rangoCampana(c);
+        const iniStr = `${ini.getFullYear()}-${String(ini.getMonth()+1).padStart(2,'0')}-${String(ini.getDate()).padStart(2,'0')}`;
+        const finStr = `${fin.getFullYear()}-${String(fin.getMonth()+1).padStart(2,'0')}-${String(fin.getDate()).padStart(2,'0')}`;
+        const contratosSolapan = (contratos || []).filter(ct => {
+            if (!ct.fecha_inicio || !ct.fecha_fin) return false;
+            return ct.fecha_inicio <= finStr && ct.fecha_fin >= iniStr;
+        });
+
         const setArr = new Set();
-        (contratos || []).forEach(ct => {
+        contratosSolapan.forEach(ct => {
             (ct.contratos_arrendadores || []).forEach(ca => {
                 if (ca.arrendador_id) setArr.add(ca.arrendador_id);
             });
         });
-        const arrendadoresUnicos = setArr.size;
 
-        // Calcular QQ pendientes totales de esta campaña
-        let qqTotal = 0;
-        if (saldos) {
-            saldos.forEach(s => {
-                qqTotal += parseFloat(s.qq_deuda_blanco || 0) + parseFloat(s.qq_deuda_negro || 0);
-            });
-        }
+        // QQ pendientes = pactado anual de cada contrato que solapa
+        //                 - movimientos imputados a esta campaña.
+        // El cálculo es dinámico: independiente de lo que diga la tabla saldos.
+        let pactadoTotal = 0;
+        let hectareasTotal = 0;
+        contratosSolapan.forEach(ct => {
+            pactadoTotal += parseFloat(ct.qq_pactados_anual || 0);
+            pactadoTotal += parseFloat(ct.qq_negro_anual || 0);
+            hectareasTotal += parseFloat(ct.hectareas || 0);
+        });
+
+        let pagadoTotal = 0;
+        const idsContratosSolapan = new Set(contratosSolapan.map(ct => ct.id));
+        (movimientos || []).forEach(m => {
+            if (m.campana_id !== c.id) return;
+            if (!idsContratosSolapan.has(m.contrato_id)) return;
+            pagadoTotal += parseFloat(m.qq || 0);
+        });
+
+        const qqPendientes = Math.max(0, pactadoTotal - pagadoTotal);
 
         return {
             ...c,
-            totalArrendadores: arrendadoresUnicos,
-            totalSaldos: saldos?.length || 0,
-            qqPendientes: qqTotal
+            estadoCalculado:    calcularEstadoCampana(c),
+            totalArrendadores:  setArr.size,
+            totalContratos:     contratosSolapan.length,
+            totalHectareas:     hectareasTotal,
+            qqPactado:          pactadoTotal,
+            qqPagado:           pagadoTotal,
+            qqPendientes
         };
-    }));
+    });
 
     campanasCargadas = conStats;
     renderizarCampanas(conStats);
+    mostrarAlertaCampanaActualFaltante(conStats);
+}
+
+/**
+ * Si no existe ninguna campaña que cubra el día de hoy, mostrar banner
+ * con botón para crearla automáticamente.
+ */
+function mostrarAlertaCampanaActualFaltante(campanas) {
+    const cont = document.getElementById('alerta-campana-faltante');
+    const hayActual = campanas.some(c => c.estadoCalculado === 'actual');
+    if (!cont) return;
+
+    if (hayActual) {
+        cont.style.display = 'none';
+        return;
+    }
+
+    // Calcular el nombre que debería tener la campaña actual
+    const hoy = new Date();
+    const anioInicio = hoy.getMonth() >= 6 ? hoy.getFullYear() : hoy.getFullYear() - 1;
+    const anioFin = anioInicio + 1;
+    const nombreSugerido = `${anioInicio}/${anioFin.toString().slice(-2)}`;
+
+    cont.style.display = 'block';
+    cont.innerHTML = `
+        <div style="padding:var(--espacio-md);background:rgba(232,183,74,0.10);border:1px solid #e8b74a;border-radius:var(--radio-md);display:flex;align-items:center;justify-content:space-between;gap:var(--espacio-md);flex-wrap:wrap;margin-bottom:var(--espacio-lg);">
+            <div style="color:#e8b74a;">
+                ⚠️ <strong>La campaña actual (${nombreSugerido}) no está creada.</strong>
+                El resto del ERP necesita una campaña activa para funcionar bien.
+            </div>
+            <button class="btn-primario" onclick="crearCampanaActualRapida(${anioInicio}, ${anioFin})">
+                Crear ${nombreSugerido}
+            </button>
+        </div>
+    `;
+}
+
+/**
+ * Crea rápidamente la campaña que cubre el día de hoy. Usado por el banner
+ * de "campaña actual faltante".
+ */
+async function crearCampanaActualRapida(anioInicio, anioFin) {
+    const nombre = `${anioInicio}/${anioFin.toString().slice(-2)}`;
+    const r = await ejecutarConsulta(
+        db.from('campanas').insert({ nombre, anio_inicio: anioInicio, anio_fin: anioFin, activa: true }).select(),
+        'crear campaña actual'
+    );
+    if (!r || r.length === 0) return;
+    // Auto-poblar saldos de los contratos que solapan
+    await asegurarSaldosContratosParaCampana(r[0]);
+    mostrarExito(`Campaña ${nombre} creada con saldos iniciales.`);
+    await cargarCampanas();
 }
 
 // ==============================================
@@ -94,25 +228,63 @@ function renderizarCampanas(campanas) {
     }
 
     grid.innerHTML = campanas.map(c => {
-        const esActiva = c.activa;
-        const claseActiva = esActiva ? 'campana-tarjeta-activa' : '';
-        const badgeActiva = esActiva
-            ? '<span class="badge badge-verde">Activa</span>'
-            : '<span class="badge badge-gris">Inactiva</span>';
+        const estado = c.estadoCalculado || 'historica';
+        const esActual = estado === 'actual';
+        const claseActiva = esActual ? 'campana-tarjeta-activa' : '';
+
+        const mapaBadge = {
+            actual:    '<span class="badge badge-verde">🟢 ACTUAL</span>',
+            futura:    '<span class="badge badge-amarillo">🟡 FUTURA</span>',
+            historica: '<span class="badge badge-gris">⚫ HISTÓRICA</span>'
+        };
+        const badgeEstado = mapaBadge[estado];
+
+        const nombreEsc = c.nombre.replace(/'/g, "\\'");
 
         return `
         <div class="campana-tarjeta ${claseActiva}">
             <div class="campana-header">
                 <span class="campana-nombre">${c.nombre}</span>
-                ${badgeActiva}
+                <div style="display:flex;align-items:center;gap:var(--espacio-sm);">
+                    ${badgeEstado}
+                    ${esAdmin ? `
+                        <details class="campana-menu">
+                            <summary class="campana-menu-btn" title="Acciones">⋮</summary>
+                            <div class="campana-menu-items">
+                                <button onclick="editarCampana('${c.id}')">
+                                    ${ICONOS.editar}
+                                    <span>Editar</span>
+                                </button>
+                                <button onclick="recalcularSaldosCampana('${c.id}', '${nombreEsc}')" title="Recalcula todos los saldos de la campaña desde cero, en base a los contratos y movimientos actuales.">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M3 2v6h6"/><path d="M21 12A9 9 0 0 0 6 5.3L3 8"/><path d="M21 22v-6h-6"/><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"/></svg>
+                                    <span>Recalcular saldos</span>
+                                </button>
+                                ${!esActual ? `
+                                    <button onclick="confirmarEliminarCampana('${c.id}', '${nombreEsc}')" class="campana-menu-item-peligro">
+                                        ${ICONOS.eliminar}
+                                        <span>Eliminar</span>
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </details>
+                    ` : ''}
+                </div>
             </div>
             <div class="campana-periodo">
                 Julio ${c.anio_inicio} — Junio ${c.anio_fin}
             </div>
             <div class="campana-stats">
                 <div class="campana-stat">
+                    <span class="campana-stat-valor">${c.totalContratos}</span>
+                    <span class="campana-stat-label">Contratos</span>
+                </div>
+                <div class="campana-stat">
                     <span class="campana-stat-valor">${c.totalArrendadores}</span>
                     <span class="campana-stat-label">Arrendadores</span>
+                </div>
+                <div class="campana-stat">
+                    <span class="campana-stat-valor">${formatearNumero(c.totalHectareas)}</span>
+                    <span class="campana-stat-label">Hectáreas</span>
                 </div>
                 <div class="campana-stat">
                     <span class="campana-stat-valor">${formatearQQ(c.qqPendientes)}</span>
@@ -125,38 +297,6 @@ function renderizarCampanas(campanas) {
                     Ver detalle
                 </a>
             </div>
-            ${esAdmin ? `
-                <div class="campana-acciones">
-                    ${!esActiva ? `
-                        <button class="campana-btn campana-btn-activar" onclick="activarCampana('${c.id}', '${c.nombre}')">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            Activar
-                        </button>
-                    ` : `
-                        <button class="campana-btn" disabled style="opacity:0.5;cursor:default;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            Campaña activa
-                        </button>
-                        <button class="campana-btn" onclick="inicializarSaldosCampana('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')" title="Crea los saldos iniciales para todos los contratos de esta campaña (no pisa saldos ya existentes)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
-                            Inicializar saldos
-                        </button>
-                        <button class="campana-btn" onclick="recalcularSaldosCampana('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')" title="Recalcula todos los saldos de la campaña desde cero, en base a los contratos y movimientos actuales. Pisa los valores existentes.">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v6h6"/><path d="M21 12A9 9 0 0 0 6 5.3L3 8"/><path d="M21 22v-6h-6"/><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"/></svg>
-                            Recalcular saldos
-                        </button>
-                    `}
-                    <button class="campana-btn" onclick="editarCampana('${c.id}')">
-                        ${ICONOS.editar}
-                        Editar
-                    </button>
-                    ${!esActiva ? `
-                        <button class="campana-btn campana-btn-eliminar" onclick="confirmarEliminarCampana('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">
-                            ${ICONOS.eliminar}
-                        </button>
-                    ` : ''}
-                </div>
-            ` : ''}
         </div>
         `;
     }).join('');
@@ -287,9 +427,15 @@ async function guardarCampana() {
             datos.activa = true;
         }
         resultado = await ejecutarConsulta(
-            db.from('campanas').insert(datos),
+            db.from('campanas').insert(datos).select(),
             'crear campaña'
         );
+
+        // Auto-crear saldos para los contratos que solapan con esta nueva campaña.
+        // Así cada contrato queda con su deuda inicial registrada en la campaña.
+        if (resultado && resultado.length > 0) {
+            await asegurarSaldosContratosParaCampana(resultado[0]);
+        }
     }
 
     if (resultado !== undefined) {
@@ -297,6 +443,49 @@ async function guardarCampana() {
         mostrarExito(campanaEditandoId ? 'Campaña actualizada' : 'Campaña creada');
         campanaEditandoId = null;
         await cargarCampanas();
+    }
+}
+
+/**
+ * Para una campaña dada, busca todos los contratos cuya vigencia solapa con
+ * el rango (1-jul-anio_inicio a 30-jun-anio_fin) y crea su saldo inicial si
+ * no existe. Respeta saldos ya cargados (no pisa valores).
+ *
+ * Se llama desde guardarCampana al crear una nueva, y desde crearCampanaActualRapida.
+ */
+async function asegurarSaldosContratosParaCampana(campana) {
+    const iniStr = `${campana.anio_inicio}-07-01`;
+    const finStr = `${campana.anio_fin}-06-30`;
+
+    // Buscar contratos cuya vigencia solapa con la campaña
+    const contratos = await ejecutarConsulta(
+        db.from('contratos')
+            .select('id, qq_pactados_anual, qq_negro_anual')
+            .lte('fecha_inicio', finStr)
+            .gte('fecha_fin', iniStr),
+        'buscar contratos para inicializar saldos'
+    ) || [];
+
+    for (const c of contratos) {
+        // Verificar si ya existe el saldo (no pisar)
+        const existentes = await ejecutarConsulta(
+            db.from('saldos').select('id')
+                .eq('contrato_id', c.id)
+                .eq('campana_id', campana.id)
+                .limit(1),
+            'verificar saldo existente'
+        );
+        if (existentes && existentes.length > 0) continue;
+
+        await ejecutarConsulta(
+            db.from('saldos').insert({
+                contrato_id: c.id,
+                campana_id: campana.id,
+                qq_deuda_blanco: parseFloat(c.qq_pactados_anual || 0),
+                qq_deuda_negro: parseFloat(c.qq_negro_anual || 0)
+            }),
+            'crear saldo contrato/campaña'
+        );
     }
 }
 

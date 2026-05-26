@@ -446,8 +446,17 @@ function buscarArrendadores(termino) {
 // al cargar contratos compartidos.
 // ==============================================
 
+// State de representantes mientras el modal está abierto.
+// Cada item: { id?, nombre_completo, dni, cuit, cargo, desde, hasta, notas, _eliminar? }
+// id es opcional: si está, es uno existente en BD (puede editarse o marcarse para eliminar).
+let representantesArrendador = [];
+// Snapshot al abrir el modal: usado para detectar qué hay que eliminar.
+let representantesOriginalesIds = new Set();
+
 function abrirModalNuevoArrendador() {
     arrendadorEditandoId = null;
+    representantesArrendador = [];
+    representantesOriginalesIds = new Set();
     abrirModalArrendador('Nuevo Arrendador', { tipo: 'persona_fisica' });
 }
 
@@ -458,6 +467,28 @@ async function editarArrendador(id) {
         return;
     }
     arrendadorEditandoId = id;
+
+    // Si es empresa, cargar sus representantes existentes
+    representantesArrendador = [];
+    representantesOriginalesIds = new Set();
+    if (arrendador.tipo === 'empresa') {
+        const reps = await ejecutarConsulta(
+            db.from('representantes').select('*').eq('empresa_id', id).order('creado_en', { ascending: true }),
+            'cargar representantes'
+        ) || [];
+        representantesArrendador = reps.map(r => ({
+            id:              r.id,
+            nombre_completo: r.nombre_completo || '',
+            dni:             r.dni || '',
+            cuit:            r.cuit || '',
+            cargo:           r.cargo || '',
+            desde:           r.desde || '',
+            hasta:           r.hasta || '',
+            notas:           r.notas || ''
+        }));
+        representantesOriginalesIds = new Set(reps.map(r => r.id));
+    }
+
     abrirModalArrendador('Editar Arrendador', arrendador);
 }
 
@@ -511,6 +542,16 @@ function abrirModalArrendador(titulo, datos) {
                 <label class="campo-label">CUIT</label>
                 <input type="text" id="campo-cuit-empresa" class="campo-input" value="${tipo === 'empresa' ? (datos.cuit || '') : ''}" placeholder="Ej: 30-12345678-9">
             </div>
+
+            <hr class="form-separador">
+            <div class="form-seccion-titulo" style="display:flex;justify-content:space-between;align-items:baseline;gap:var(--espacio-sm);">
+                <span>Representantes legales</span>
+                <button type="button" class="btn-secundario" onclick="agregarRepresentanteArrendador()" style="padding:4px 10px;font-size:var(--texto-xs);font-weight:600;">+ Agregar representante</button>
+            </div>
+            <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-bottom:var(--espacio-sm);">
+                Personas físicas que firman en nombre de esta empresa o sucesión.
+            </div>
+            <div id="representantes-arrendador-lista"></div>
         </div>
 
         <div class="campo-grupo">
@@ -550,6 +591,9 @@ function abrirModalArrendador(titulo, datos) {
 
     abrirModal(titulo, contenido, footer);
     setTimeout(() => document.getElementById('campo-nombre')?.focus(), 100);
+
+    // Si es empresa, renderizar la lista de representantes (puede estar vacía)
+    if (tipo === 'empresa') renderRepresentantesArrendador();
 }
 
 function toggleTipoArrendador() {
@@ -559,6 +603,135 @@ function toggleTipoArrendador() {
     if (!bloquePersona || !bloqueEmpresa) return;
     bloquePersona.style.display = tipo === 'persona_fisica' ? 'block' : 'none';
     bloqueEmpresa.style.display = tipo === 'empresa' ? 'block' : 'none';
+
+    // Al cambiar a empresa, refrescar la lista de representantes
+    if (tipo === 'empresa') renderRepresentantesArrendador();
+}
+
+// ==============================================
+// REPRESENTANTES — UI dentro del modal de arrendador (solo empresas)
+// ==============================================
+
+function renderRepresentantesArrendador() {
+    const cont = document.getElementById('representantes-arrendador-lista');
+    if (!cont) return;
+
+    if (representantesArrendador.length === 0) {
+        cont.innerHTML = `
+            <div style="padding:var(--espacio-sm) var(--espacio-md);background:var(--color-fondo-secundario);border-radius:var(--radio-md);color:var(--color-texto-tenue);font-size:var(--texto-sm);">
+                Sin representantes cargados. Tocá "Agregar representante" para sumar uno.
+            </div>
+        `;
+        return;
+    }
+
+    cont.innerHTML = representantesArrendador.map((r, i) => `
+        <div style="border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md);margin-bottom:var(--espacio-sm);background:var(--color-fondo-tarjeta);">
+            <div class="campo-grupo">
+                <label class="campo-label">Nombre completo <span class="campo-requerido">*</span></label>
+                <input type="text" class="campo-input" value="${r.nombre_completo || ''}"
+                    placeholder="Ej: Hilda Rosa Grosso"
+                    oninput="actualizarRepresentanteArrendador(${i}, 'nombre_completo', this.value)">
+            </div>
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">DNI</label>
+                    <input type="text" class="campo-input" value="${r.dni || ''}"
+                        placeholder="13456913 (sin puntos)"
+                        oninput="actualizarRepresentanteArrendador(${i}, 'dni', this.value)">
+                    <span class="campo-ayuda">Si en el futuro firma un contrato propio, el sistema lo reconoce por DNI.</span>
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">CUIT</label>
+                    <input type="text" class="campo-input" value="${r.cuit || ''}"
+                        placeholder="XX-XXXXXXXX-X"
+                        oninput="actualizarRepresentanteArrendador(${i}, 'cuit', this.value)">
+                </div>
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">Cargo</label>
+                <input type="text" class="campo-input" value="${r.cargo || ''}"
+                    placeholder="Presidenta, Apoderado, Socio gerente, Heredera..."
+                    oninput="actualizarRepresentanteArrendador(${i}, 'cargo', this.value)">
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:var(--espacio-xs);">
+                <button type="button" class="btn-secundario" style="color:var(--color-error);border-color:var(--color-error);padding:4px 12px;font-size:var(--texto-xs);" onclick="quitarRepresentanteArrendador(${i})">Quitar</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function agregarRepresentanteArrendador() {
+    representantesArrendador.push({
+        nombre_completo: '',
+        dni:             '',
+        cuit:             '',
+        cargo:           '',
+        desde:           '',
+        hasta:           '',
+        notas:           ''
+    });
+    renderRepresentantesArrendador();
+}
+
+function actualizarRepresentanteArrendador(idx, campo, valor) {
+    const r = representantesArrendador[idx];
+    if (r) r[campo] = valor;
+}
+
+function quitarRepresentanteArrendador(idx) {
+    const r = representantesArrendador[idx];
+    if (!r) return;
+    const label = r.nombre_completo || 'este representante';
+    if (!confirm(`¿Quitar a "${label}"?`)) return;
+    representantesArrendador.splice(idx, 1);
+    renderRepresentantesArrendador();
+}
+
+/**
+ * Sincroniza la tabla `representantes` con el state local:
+ *  - INSERT para items sin id (nuevos)
+ *  - UPDATE para items con id (existentes editados)
+ *  - DELETE para los ids que estaban en el snapshot original y ya no están.
+ */
+async function persistirRepresentantesArrendador(empresaId) {
+    // 1) DELETE: representantes que estaban originalmente y fueron quitados
+    const idsActuales = new Set(representantesArrendador.filter(r => r.id).map(r => r.id));
+    const aBorrar = [...representantesOriginalesIds].filter(id => !idsActuales.has(id));
+    for (const id of aBorrar) {
+        await ejecutarConsulta(
+            db.from('representantes').delete().eq('id', id),
+            'eliminar representante'
+        );
+    }
+
+    // 2) UPDATE / INSERT
+    for (const r of representantesArrendador) {
+        if (!r.nombre_completo || !r.nombre_completo.trim()) continue;  // ignorar vacíos
+        const datosRep = {
+            empresa_id:      empresaId,
+            nombre_completo: r.nombre_completo.trim(),
+            dni:             (r.dni  || '').trim() || null,
+            cuit:            (r.cuit || '').trim() || null,
+            cargo:           (r.cargo|| '').trim() || null,
+            desde:           r.desde || null,
+            hasta:           r.hasta || null,
+            notas:           r.notas || null,
+            creado_por:      window.__USUARIO__?.id || null
+        };
+
+        if (r.id) {
+            await ejecutarConsulta(
+                db.from('representantes').update(datosRep).eq('id', r.id),
+                'actualizar representante'
+            );
+        } else {
+            await ejecutarConsulta(
+                db.from('representantes').insert(datosRep),
+                'insertar representante'
+            );
+        }
+    }
 }
 
 async function guardarArrendador() {
@@ -614,6 +787,7 @@ async function guardarArrendador() {
     };
 
     let resultado;
+    let arrendadorIdFinal = arrendadorEditandoId;
     if (arrendadorEditandoId) {
         resultado = await ejecutarConsulta(
             db.from('arrendadores').update(datos).eq('id', arrendadorEditandoId),
@@ -630,9 +804,15 @@ async function guardarArrendador() {
         }
     } else {
         resultado = await ejecutarConsulta(
-            db.from('arrendadores').insert(datos),
+            db.from('arrendadores').insert(datos).select(),
             'crear arrendador'
         );
+        if (resultado && resultado[0]) arrendadorIdFinal = resultado[0].id;
+    }
+
+    // Persistir representantes (solo para tipo empresa)
+    if (resultado !== undefined && tipo === 'empresa' && arrendadorIdFinal) {
+        await persistirRepresentantesArrendador(arrendadorIdFinal);
     }
 
     if (resultado !== undefined) {

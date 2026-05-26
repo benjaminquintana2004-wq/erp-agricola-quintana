@@ -89,13 +89,20 @@ async function cargarCampanaDetalle(campanaId, usuario) {
     // Renderizar selector
     renderizarSelectorCampana();
 
+    // Rango de la campaña: 1-jul-año_inicio a 30-jun-año_fin
+    const iniStr = `${campanaActualDetalle.anio_inicio}-07-01`;
+    const finStr = `${campanaActualDetalle.anio_fin}-06-30`;
+
     // Cargar todo en paralelo
+    // - Contratos: por solapamiento de fechas (no por campana_id) para que
+    //   los contratos plurianuales aparezcan en TODAS las campañas que cubren.
     const [contratos, saldos, movimientos] = await Promise.all([
         ejecutarConsulta(
             db.from('contratos')
                 .select('*, contratos_arrendadores(es_titular_principal, orden, arrendadores(id, nombre, telefono))')
-                .eq('campana_id', campanaActualDetalle.id),
-            'cargar contratos de la campaña'
+                .lte('fecha_inicio', finStr)
+                .gte('fecha_fin', iniStr),
+            'cargar contratos que solapan con la campaña'
         ),
         ejecutarConsulta(
             db.from('saldos')
@@ -179,13 +186,12 @@ function renderizarResumenEjecutivo(contratos, saldos, movimientos) {
     const entregadosNegro = movsCampana.filter(m => m.tipo === 'negro').reduce((s, m) => s + parseFloat(m.qq || 0), 0);
     const entregadosTotal = entregadosBlanco + entregadosNegro;
 
-    // QQ pendientes — suma de saldos
-    let pendientesBlanco = 0, pendientesNegro = 0;
-    saldos.forEach(s => {
-        pendientesBlanco += parseFloat(s.qq_deuda_blanco || 0);
-        pendientesNegro += parseFloat(s.qq_deuda_negro || 0);
-    });
-    const pendientesTotal = pendientesBlanco + pendientesNegro;
+    // QQ pendientes — calculado dinámicamente: pactado - entregado.
+    // No depende de la tabla saldos, así las históricas muestran lo real
+    // incluso si los registros de saldos no se inicializaron explícitamente.
+    const pendientesBlanco = Math.max(0, pactadosBlanco - entregadosBlanco);
+    const pendientesNegro  = Math.max(0, pactadosNegro  - entregadosNegro);
+    const pendientesTotal  = pendientesBlanco + pendientesNegro;
 
     // % cumplimiento
     const pct = pactadosTotal > 0 ? Math.round((entregadosTotal / pactadosTotal) * 100) : 0;

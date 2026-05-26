@@ -22,7 +22,7 @@ async function cargarFichaGrupo(ids, usuario) {
     };
 
     // Cargar todo en paralelo
-    const [miembros, contratos, saldos, movimientos] = await Promise.all([
+    const [miembros, contratos, saldos, movimientos, campanas] = await Promise.all([
         ejecutarConsulta(
             db.from('arrendadores').select('*').in('id', idsOrden),
             'cargar miembros del grupo'
@@ -45,9 +45,18 @@ async function cargarFichaGrupo(ids, usuario) {
         ),
         ejecutarConsulta(
             db.from('movimientos')
-                .select('id, fecha, contrato_id, arrendador_id, qq, monto_total, estado_factura, numero_factura, observaciones')
+                .select(`
+                    id, fecha, contrato_id, arrendador_id, campana_id, qq, precio_quintal, moneda, tipo, estado_factura, punto_venta, nro_comprobante, observaciones,
+                    transferencia:movimientos_tesoreria!movimiento_arrendamiento_id (
+                        id, estado, fecha_emision, fecha_cobro, fecha_cobrado_real
+                    )
+                `)
                 .order('fecha', { ascending: false }),
             'cargar movimientos'
+        ),
+        ejecutarConsulta(
+            db.from('campanas').select('*').order('anio_inicio', { ascending: false }),
+            'cargar campañas'
         )
     ]);
 
@@ -152,6 +161,7 @@ async function cargarFichaGrupo(ids, usuario) {
     cont.innerHTML = `
         ${renderHeader(nombreGrupo, tipoGrupo, miembros, titular, puedeEditar, contratosDelGrupo.length)}
         ${renderTotales(qqB, qqN, contratosDelGrupo, hoy)}
+        ${renderDesglosePorCampanaGrupo(contratosDelGrupo, campanas || [], movsDelGrupo)}
         ${renderNotasGrupo(notasGrupo)}
         ${renderMiembros(miembros, contratosDelGrupo, puedeEditar)}
         ${renderRepresentantesGrupo(miembros, representantesPorEmpresa)}
@@ -570,18 +580,41 @@ function renderMovimientos(movs, arrPorId) {
 
     const filas = movs.slice(0, 30).map(m => {
         const emisor = arrPorId.get(m.arrendador_id);
+        const total = (m.qq && m.precio_quintal) ? m.qq * m.precio_quintal : null;
+        const moneda = m.moneda || 'ARS';
+        const simbolo = moneda === 'USD' ? 'U$D ' : '$ ';
+        const nroFact = (m.punto_venta && m.nro_comprobante)
+            ? `${m.punto_venta}-${m.nro_comprobante}`
+            : (m.nro_comprobante || '—');
         const estado = m.estado_factura === 'factura_ok'
             ? '<span class="badge badge-verde">Factura OK</span>'
             : m.estado_factura
                 ? `<span class="badge badge-amarillo">${m.estado_factura.replace(/_/g, ' ')}</span>`
                 : '<span class="badge badge-gris">—</span>';
+
+        // Fechas de la transferencia vinculada (la N:N devuelve array)
+        const t = Array.isArray(m.transferencia) ? m.transferencia[0] : m.transferencia;
+        // Fecha de emisión: la guarda la transferencia (típicamente == m.fecha),
+        // pero si no hay transferencia caemos a m.fecha como fallback.
+        const fechaEmis = t?.fecha_emision || m.fecha;
+        // Fecha de cobro: la real si ya se ejecutó, sino la proyectada.
+        let fechaCobroCell;
+        if (t?.fecha_cobrado_real) {
+            fechaCobroCell = `${fmtFecha(t.fecha_cobrado_real)} <span style="font-size:var(--texto-xs);color:var(--color-verde);">✓ ejecutada</span>`;
+        } else if (t?.fecha_cobro) {
+            fechaCobroCell = `${fmtFecha(t.fecha_cobro)} <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">(prevista)</span>`;
+        } else {
+            fechaCobroCell = '—';
+        }
+
         return `
             <tr>
-                <td>${fmtFecha(m.fecha)}</td>
+                <td>${fmtFecha(fechaEmis)}</td>
+                <td>${fechaCobroCell}</td>
                 <td>${emisor ? emisor.nombre : '—'}</td>
                 <td>${fmtNum(m.qq)} qq</td>
-                <td>${m.monto_total ? '$ ' + fmtNum(m.monto_total) : '—'}</td>
-                <td>${m.numero_factura || '—'}</td>
+                <td>${total !== null ? simbolo + fmtNum(total) : '—'}</td>
+                <td>${nroFact}</td>
                 <td>${estado}</td>
             </tr>
         `;
@@ -594,7 +627,8 @@ function renderMovimientos(movs, arrPorId) {
                 <table class="tabla">
                     <thead>
                         <tr>
-                            <th>Fecha</th>
+                            <th>F. emisión</th>
+                            <th>F. cobro</th>
                             <th>Emisor de factura</th>
                             <th>QQ</th>
                             <th>Monto</th>
@@ -794,3 +828,101 @@ async function guardarNombreGrupo() {
         await cargarFichaGrupo(__idsGrupoActual, __usuarioGrupoActual);
     }
 }
+
+// ==============================================
+// DESGLOSE POR CAMPAÑA — Histórica / Actual / Futura
+// ==============================================
+
+/**
+ * Misma lógica que renderizarDesglosePorCampana en arrendador.js, pero
+ * adaptado al contexto del grupo: trabaja sobre los contratos del grupo y
+ * los movimientos filtrados al grupo (movsDelGrupo).
+ *
+ * Por cada (contrato del grupo × campaña que solapa con su vigencia):
+ *   - Pactado = qq_pactados_anual + qq_negro_anual
+ *   - Pagado  = sum(movimientos.qq donde campana_id = X y contrato_id = Y)
+ *   - Pendiente = max(0, pactado - pagado)
+ * Agrupa por estado calculado de la campaña (histórica / actual / futura).
+ */
+function renderDesglosePorCampanaGrupo(contratosGrupo, campanas, movimientos) {
+    if (contratosGrupo.length === 0 || campanas.length === 0) return '';
+
+    const hoy = new Date();
+    const rango = (c) => ({
+        inicio: `${c.anio_inicio}-07-01`,
+        fin:    `${c.anio_fin}-06-30`,
+        iniDate: new Date(c.anio_inicio, 6, 1),
+        finDate: new Date(c.anio_fin, 5, 30, 23, 59, 59)
+    });
+    const estadoOf = (c) => {
+        const r = rango(c);
+        if (hoy < r.iniDate) return 'futura';
+        if (hoy > r.finDate) return 'historica';
+        return 'actual';
+    };
+
+    const filasPorEstado = { historica: [], actual: [], futura: [] };
+    let totalPactado = 0;
+    let totalPagado  = 0;
+
+    for (const ct of contratosGrupo) {
+        if (!ct.fecha_inicio || !ct.fecha_fin) continue;
+        for (const camp of campanas) {
+            const r = rango(camp);
+            if (ct.fecha_inicio > r.fin || ct.fecha_fin < r.inicio) continue;
+
+            const pactado = parseFloat(ct.qq_pactados_anual || 0) + parseFloat(ct.qq_negro_anual || 0);
+            const pagado  = movimientos
+                .filter(m => m.campana_id === camp.id && m.contrato_id === ct.id)
+                .reduce((s, m) => s + parseFloat(m.qq || 0), 0);
+            const pendiente = Math.max(0, pactado - pagado);
+
+            const estado = estadoOf(camp);
+            const nombreContrato = ct.nombre_grupo || ct.campo || 'Sin nombre';
+            filasPorEstado[estado].push({
+                campana: camp.nombre,
+                anioOrden: camp.anio_inicio,
+                contrato: nombreContrato,
+                pactado, pagado, pendiente
+            });
+
+            totalPactado += pactado;
+            totalPagado  += pagado;
+        }
+    }
+
+    const totalFilas = filasPorEstado.historica.length + filasPorEstado.actual.length + filasPorEstado.futura.length;
+    if (totalFilas === 0) return '';
+
+    filasPorEstado.historica.sort((a, b) => b.anioOrden - a.anioOrden);
+    filasPorEstado.actual.sort((a, b) => a.contrato.localeCompare(b.contrato));
+    filasPorEstado.futura.sort((a, b) => a.anioOrden - b.anioOrden);
+
+    const totalPendiente = Math.max(0, totalPactado - totalPagado);
+    const fmt = (n) => Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' qq';
+
+    const subtotal = (filas) => filas.reduce((s, f) => s + f.pendiente, 0);
+
+    return `
+        <div class="ficha-seccion">
+            <h2 class="ficha-seccion-titulo">QQ pendientes por campaña</h2>
+            <div class="desglose-campanas">
+                ${tarjetaEstadoQQ('historica', filasPorEstado.historica, fmt, subtotal)}
+                ${tarjetaEstadoQQ('actual',    filasPorEstado.actual,    fmt, subtotal)}
+                ${tarjetaEstadoQQ('futura',    filasPorEstado.futura,    fmt, subtotal)}
+            </div>
+            <div class="desglose-total">
+                <div class="desglose-total-fila desglose-total-fila-secundaria">
+                    <span>Total pactado del grupo</span>
+                    <span>${fmt(totalPactado)}</span>
+                </div>
+                <div class="desglose-total-fila desglose-total-fila-principal">
+                    <span>Total pendiente</span>
+                    <span>${fmt(totalPendiente)}</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// tarjetaEstadoQQ() está definida en ui.js (compartida con arrendador.js)

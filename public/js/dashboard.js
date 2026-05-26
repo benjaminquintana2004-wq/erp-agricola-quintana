@@ -13,7 +13,13 @@ async function cargarDashboard() {
         ),
         ejecutarConsulta(
             db.from('movimientos')
-                .select('*, arrendadores(nombre)')
+                .select(`
+                    *,
+                    arrendadores(nombre),
+                    transferencia:movimientos_tesoreria!movimiento_arrendamiento_id(
+                        id, estado, fecha_cobrado_real, monto
+                    )
+                `)
                 .order('fecha', { ascending: false }),
             'dashboard: movimientos'
         ),
@@ -167,6 +173,35 @@ function renderizarKPIs(arrendadores, movimientos, contratos, saldos) {
 // ALERTAS URGENTES
 // ==============================================
 
+/**
+ * Helper local (duplicado de movimientos.js para no acoplar archivos).
+ * Devuelve la transferencia vinculada al movimiento o null.
+ */
+function _transferenciaDeMov(m) {
+    if (!m || !m.transferencia) return null;
+    if (Array.isArray(m.transferencia)) return m.transferencia[0] || null;
+    return m.transferencia;
+}
+
+/**
+ * Helper local: estado del ciclo Prometido → Ejecutado.
+ * Misma lógica que calcularEstadoEjecucion en movimientos.js.
+ */
+function _calcularEstadoEjecucionMov(m) {
+    // Negro = efectivo, no entra al ciclo bancario
+    if (m.tipo === 'negro') return 'efectivo';
+    const t = _transferenciaDeMov(m);
+    if (!t) return 'sin_pago';
+    if (t.estado === 'cobrado') return 'ejecutado';
+    if (t.estado === 'anulado') return 'cancelado';
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const f = new Date(m.fecha + 'T00:00:00');
+    const dias = Math.floor((hoy - f) / (1000 * 60 * 60 * 24));
+    if (dias < 7) return 'prometido_en_curso';
+    if (dias < 10) return 'prometido_listo';
+    return 'prometido_vencido';
+}
+
 function renderizarAlertas(movimientos, contratos) {
     const panel = document.getElementById('panel-alertas');
     const body = document.getElementById('alertas-body');
@@ -176,29 +211,67 @@ function renderizarAlertas(movimientos, contratos) {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
-    // Facturas pendientes > 20 días
+    // Facturas pendientes — contadas desde la fecha de ejecución de la transferencia
+    // (no desde la fecha del movimiento). Si nunca se ejecutó, no es esperable factura.
     if (movimientos) {
         movimientos
             .filter(m => m.estado_factura !== 'factura_ok')
             .forEach(m => {
-                const fecha = new Date(m.fecha + 'T00:00:00');
+                const t = _transferenciaDeMov(m);
+                if (!t || !t.fecha_cobrado_real) return;  // sin ejecutar: no esperar factura
+                const fecha = new Date(t.fecha_cobrado_real + 'T00:00:00');
                 const dias = Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24));
                 if (dias >= 20) {
                     alertas.push({
                         tipo: 'rojo',
                         titulo: `${m.arrendadores?.nombre || 'Sin nombre'} — ${formatearQQ(m.qq)}`,
-                        detalle: `Factura pendiente hace ${dias} días`,
-                        badge: `<span class="badge badge-rojo">${dias}d</span>`
+                        detalle: `Factura pendiente hace ${dias} días desde la transferencia`,
+                        badge: `<span class="badge badge-rojo">${dias}d</span>`,
+                        href: '/movimientos.html'
                     });
                 } else if (dias >= 10) {
                     alertas.push({
                         tipo: 'amarillo',
                         titulo: `${m.arrendadores?.nombre || 'Sin nombre'} — ${formatearQQ(m.qq)}`,
-                        detalle: `Factura pendiente hace ${dias} días`,
-                        badge: `<span class="badge badge-amarillo">${dias}d</span>`
+                        detalle: `Factura pendiente hace ${dias} días desde la transferencia`,
+                        badge: `<span class="badge badge-amarillo">${dias}d</span>`,
+                        href: '/movimientos.html'
                     });
                 }
             });
+    }
+
+    // Transferencias por ejecutar (ciclo Prometido → Ejecutado)
+    if (movimientos) {
+        const listos   = [];
+        const vencidos = [];
+        movimientos.forEach(m => {
+            const estado = _calcularEstadoEjecucionMov(m);
+            if (estado === 'prometido_listo')   listos.push(m);
+            if (estado === 'prometido_vencido') vencidos.push(m);
+        });
+
+        if (vencidos.length > 0) {
+            const f = new Date(vencidos[0].fecha + 'T00:00:00');
+            const dias = Math.floor((hoy - f) / (1000 * 60 * 60 * 24));
+            const masAntiguo = vencidos[0].arrendadores?.nombre || 'Arrendador';
+            alertas.push({
+                tipo: 'rojo',
+                titulo: `${vencidos.length} transferencia${vencidos.length !== 1 ? 's' : ''} vencida${vencidos.length !== 1 ? 's' : ''}`,
+                detalle: `La más atrasada: ${masAntiguo} (${dias} días)`,
+                badge: '<span class="badge badge-rojo">Atrasado</span>',
+                href: '/movimientos.html?ejec=vencido'
+            });
+        }
+        if (listos.length > 0) {
+            alertas.push({
+                tipo: 'amarillo',
+                titulo: `${listos.length} transferencia${listos.length !== 1 ? 's' : ''} lista${listos.length !== 1 ? 's' : ''} para ejecutar`,
+                detalle: 'Pasaron 7 días desde el aviso — corresponde transferir',
+                badge: '<span class="badge badge-amarillo">Listo</span>',
+                href: '/movimientos.html?ejec=listo'
+            });
+        }
     }
 
     // Contratos por vencer (< 90 días)
@@ -236,8 +309,8 @@ function renderizarAlertas(movimientos, contratos) {
     const mostrar = alertas.slice(0, 8);
 
     panel.style.display = 'block';
-    body.innerHTML = mostrar.map(a => `
-        <div class="alerta-item">
+    body.innerHTML = mostrar.map(a => {
+        const contenido = `
             <div class="alerta-item-icono alerta-item-icono-${a.tipo}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -248,8 +321,11 @@ function renderizarAlertas(movimientos, contratos) {
                 <div class="alerta-item-detalle">${a.detalle}</div>
             </div>
             <div class="alerta-item-badge">${a.badge}</div>
-        </div>
-    `).join('') + (alertas.length > 8 ? `
+        `;
+        return a.href
+            ? `<a href="${a.href}" class="alerta-item" style="text-decoration:none;color:inherit;cursor:pointer;">${contenido}</a>`
+            : `<div class="alerta-item">${contenido}</div>`;
+    }).join('') + (alertas.length > 8 ? `
         <div class="alerta-item" style="justify-content:center; color:var(--color-texto-tenue);">
             y ${alertas.length - 8} alertas más...
         </div>
