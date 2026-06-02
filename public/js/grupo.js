@@ -261,7 +261,7 @@ function renderHeader(nombre, tipo, miembros, titular, puedeEditar, cantContrato
                 ${tipoBadge(tipo)}
                 <span style="color: var(--color-texto-tenue);">${sub}</span>
                 ${titular?.telefono ? `<span style="color: var(--color-texto-tenue);">·</span>
-                  <span style="color: var(--color-texto-tenue);">Titular: <strong style="color:var(--color-texto);">${titular.nombre}</strong> · ${titular.telefono}</span>` : ''}
+                  <span style="color: var(--color-texto-tenue);">Titular: <strong style="color:var(--color-texto);">${escaparHTML(titular.nombre)}</strong> · ${escaparHTML(titular.telefono)}</span>` : ''}
             </div>
         </div>
     `;
@@ -327,24 +327,24 @@ function renderMiembros(miembros, contratos, puedeEditar) {
         const esTitular = idsTitulares.has(m.id);
         const idDoc = m.cuit || (m.dni ? `DNI ${m.dni}` : '—');
         const chipNotas = m.notas
-            ? `<span class="badge badge-gris" style="margin-left:4px; cursor:help;" title="${m.notas.replace(/"/g, '&quot;')}">📝 nota</span>`
+            ? `<span class="badge badge-gris" style="margin-left:4px; cursor:help;" title="${escaparHTML(m.notas)}">📝 nota</span>`
             : '';
         return `
             <tr>
                 <td>
-                    <a href="/arrendador.html?id=${m.id}" style="color: var(--color-texto); font-weight: 600;">${m.nombre}</a>
+                    <a href="/arrendador.html?id=${m.id}" style="color: var(--color-texto); font-weight: 600;">${escaparHTML(m.nombre)}</a>
                     ${esTitular ? '<span style="color: var(--color-acento); margin-left:4px;" title="Titular principal en algún contrato">★</span>' : ''}
                     ${chipNotas}
                 </td>
                 <td>${m.tipo === 'empresa' ? 'Empresa' : 'Persona'}</td>
-                <td>${idDoc}</td>
-                <td>${m.telefono || '—'}</td>
-                <td>${m.email || '—'}</td>
+                <td>${escaparHTML(idDoc)}</td>
+                <td>${escaparHTML(m.telefono) || '—'}</td>
+                <td>${escaparHTML(m.email) || '—'}</td>
                 <td>
                     <div class="tabla-acciones">
                         <a class="tabla-btn" href="/arrendador.html?id=${m.id}" title="Ver ficha individual">${ICONOS.ver}</a>
                         ${puedeEditar ? `<button class="tabla-btn" onclick="editarMiembroGrupo('${m.id}')" title="Editar datos del arrendador">${ICONOS.editar}</button>` : ''}
-                        ${puedeEditar ? `<button class="tabla-btn btn-eliminar" onclick="confirmarEliminarArrendador('${m.id}', '${(m.nombre || '').replace(/'/g, "\\'")}')" title="Eliminar arrendador del directorio">${ICONOS.eliminar}</button>` : ''}
+                        ${puedeEditar ? `<button class="tabla-btn btn-eliminar" onclick="confirmarEliminarArrendador('${m.id}', '${(m.nombre || '').replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="Eliminar arrendador del directorio">${ICONOS.eliminar}</button>` : ''}
                     </div>
                 </td>
             </tr>
@@ -402,14 +402,14 @@ function renderEmpresasRepresentadas(miembros, empresasRepresentadasPorPersona) 
     if (filas.length === 0) return '';
 
     const html = filas.map(({ persona, empresa, cargo }) => {
-        const cargoTxt = cargo ? `<span class="badge badge-gris" style="margin-left:6px;">${cargo}</span>` : '';
-        const idDoc = empresa.cuit ? `CUIT ${empresa.cuit}` : '';
+        const cargoTxt = cargo ? `<span class="badge badge-gris" style="margin-left:6px;">${escaparHTML(cargo)}</span>` : '';
+        const idDoc = empresa.cuit ? `CUIT ${escaparHTML(empresa.cuit)}` : '';
         return `
             <tr>
-                <td>${persona.nombre}</td>
+                <td>${escaparHTML(persona.nombre)}</td>
                 <td>
                     <a href="/grupo.html?ids=${empresa.id}" style="color: var(--color-dorado); font-weight: 600;">
-                        🏢 ${empresa.nombre}
+                        🏢 ${escaparHTML(empresa.nombre)}
                     </a>
                     ${cargoTxt}
                     ${idDoc ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${idDoc}</span>` : ''}
@@ -452,11 +452,11 @@ function renderRepresentantesGrupo(miembros, representantesPorEmpresa) {
     const bloques = empresasConReps.map(empresa => {
         const reps = representantesPorEmpresa[empresa.id] || [];
         const filas = reps.map(r => {
-            const idDoc = r.cuit ? `CUIT ${r.cuit}` : (r.dni ? `DNI ${r.dni}` : '—');
-            const cargo = r.cargo ? `<span class="badge badge-gris" style="margin-left:6px;">${r.cargo}</span>` : '';
+            const idDoc = r.cuit ? `CUIT ${escaparHTML(r.cuit)}` : (r.dni ? `DNI ${escaparHTML(r.dni)}` : '—');
+            const cargo = r.cargo ? `<span class="badge badge-gris" style="margin-left:6px;">${escaparHTML(r.cargo)}</span>` : '';
             return `
                 <tr>
-                    <td><strong>${r.nombre_completo}</strong>${cargo}</td>
+                    <td><strong>${escaparHTML(r.nombre_completo)}</strong>${cargo}</td>
                     <td>${idDoc}</td>
                 </tr>
             `;
@@ -464,7 +464,7 @@ function renderRepresentantesGrupo(miembros, representantesPorEmpresa) {
 
         // Si hay más de una empresa en el grupo, mostramos el nombre de la empresa como subtítulo
         const subtitulo = empresasConReps.length > 1
-            ? `<h3 style="font-size: var(--texto-sm); color: var(--color-dorado); margin: 0 0 var(--espacio-xs) 0;">${empresa.nombre}</h3>`
+            ? `<h3 style="font-size: var(--texto-sm); color: var(--color-dorado); margin: 0 0 var(--espacio-xs) 0;">${escaparHTML(empresa.nombre)}</h3>`
             : '';
 
         return `
@@ -525,8 +525,8 @@ function renderContratos(contratos, saldoPorContrato, hoy) {
 
         return `
             <tr style="cursor:pointer;" onclick="window.location.href='/contratos.html?id=${c.id}'">
-                <td><strong>${c.nombre_grupo || '—'}</strong></td>
-                <td>${c.campo || '—'}</td>
+                <td><strong>${escaparHTML(c.nombre_grupo) || '—'}</strong></td>
+                <td>${escaparHTML(c.campo) || '—'}</td>
                 <td>${c.hectareas ? fmtNum(c.hectareas) + ' ha' : '—'}</td>
                 <td>${fmtFecha(c.fecha_inicio)} → ${fmtFecha(c.fecha_fin)}</td>
                 <td>
@@ -584,8 +584,8 @@ function renderMovimientos(movs, arrPorId) {
         const moneda = m.moneda || 'ARS';
         const simbolo = moneda === 'USD' ? 'U$D ' : '$ ';
         const nroFact = (m.punto_venta && m.nro_comprobante)
-            ? `${m.punto_venta}-${m.nro_comprobante}`
-            : (m.nro_comprobante || '—');
+            ? `${escaparHTML(m.punto_venta)}-${escaparHTML(m.nro_comprobante)}`
+            : (escaparHTML(m.nro_comprobante) || '—');
         const estado = m.estado_factura === 'factura_ok'
             ? '<span class="badge badge-verde">Factura OK</span>'
             : m.estado_factura
@@ -611,7 +611,7 @@ function renderMovimientos(movs, arrPorId) {
             <tr>
                 <td>${fmtFecha(fechaEmis)}</td>
                 <td>${fechaCobroCell}</td>
-                <td>${emisor ? emisor.nombre : '—'}</td>
+                <td>${emisor ? escaparHTML(emisor.nombre) : '—'}</td>
                 <td>${fmtNum(m.qq)} qq</td>
                 <td>${total !== null ? simbolo + fmtNum(total) : '—'}</td>
                 <td>${nroFact}</td>

@@ -1192,12 +1192,15 @@ async function verPDFContrato(pdfPath) {
 // ==============================================
 
 /**
- * Devuelve la API key configurada para la IA elegida, o null si no está configurada.
+ * Antes devolvía la clave de IA desde el navegador.
+ * Ahora la clave vive en la Edge Function (servidor), así que el navegador
+ * ya no la maneja. Devolvemos un valor "centinela" para que el resto del
+ * código siga funcionando sin tocar los chequeos `if (!apiKey)`.
+ * El parámetro `apiKey` que reciben llamarGemini/llamarClaude se ignora:
+ * la clave real la pone el proxy del lado del servidor.
  */
-function obtenerApiKeyIA(ia) {
-    return ia === 'claude'
-        ? (window.__ENV__?.ANTHROPIC_API_KEY || null)
-        : (window.__ENV__?.GEMINI_API_KEY  || null);
+function obtenerApiKeyIA(_ia) {
+    return 'proxy';
 }
 
 /**
@@ -1415,8 +1418,6 @@ function dormir(ms) {
  * para que el orquestador pueda decidir si reintenta o cambia de modelo.
  */
 async function invocarModeloGemini(apiKey, pdfBase64, modelo, prompt) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
-
     const body = {
         contents: [{
             parts: [
@@ -1440,9 +1441,10 @@ async function invocarModeloGemini(apiKey, pdfBase64, modelo, prompt) {
         body.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
     }
 
-    const response = await fetch(url, {
+    // La clave de Gemini vive en la Edge Function, no en el navegador.
+    const response = await fetch(urlProxyGemini(modelo), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await headersProxyIA(),
         body: JSON.stringify(body)
     });
 
@@ -1685,14 +1687,10 @@ Formato de respuesta (solo JSON, sin markdown ni explicaciones):
                 actualizarEstadoGemini(`Reintentando con Claude (${intento}/3)...`, 'warning');
             }
 
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
+            // La clave de Claude vive en la Edge Function, no en el navegador.
+            const response = await fetch(urlProxyAnthropic(), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
+                headers: await headersProxyIA(),
                 body: JSON.stringify({
                     model: 'claude-sonnet-4-5',
                     max_tokens: 8192,

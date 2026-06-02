@@ -1,9 +1,13 @@
 // ==============================================
 // Netlify Function: /api/env
-// Este mini-servidor le pasa las credenciales de Supabase al frontend.
-// Las variables de entorno viven en Netlify (seguro), y esta función
-// se las entrega al navegador cuando las necesita.
-// Solo expone las claves públicas (anon key), nunca las secretas.
+// Le pasa al navegador SOLO las credenciales públicas de Supabase.
+//
+// La URL y la "anon key" de Supabase son públicas POR DISEÑO: la
+// seguridad real la dan las políticas RLS de la base de datos.
+//
+// IMPORTANTE: las claves de IA (Gemini / Anthropic) NO se exponen acá.
+// Viven como secretos del lado del servidor en las Supabase Edge Functions
+// (gemini-proxy / anthropic-proxy). El navegador nunca las ve.
 // ==============================================
 
 exports.handler = async function () {
@@ -15,9 +19,7 @@ exports.handler = async function () {
         },
         body: JSON.stringify({
             SUPABASE_URL: process.env.SUPABASE_URL || '',
-            SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
-            GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || ''
+            SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || ''
         })
     };
 };

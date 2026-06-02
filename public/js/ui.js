@@ -193,6 +193,28 @@ async function cargarBadgesSidebar() {
 }
 
 // ==============================================
+// Seguridad: escapado de HTML (anti-XSS)
+// Cualquier dato que escriba el usuario (nombres, observaciones,
+// domicilios, notas) DEBE pasar por acá antes de inyectarse con
+// innerHTML, para que un texto como <img onerror=...> no se ejecute.
+// ==============================================
+
+/**
+ * Convierte un valor en texto seguro para insertar dentro de HTML.
+ * Neutraliza < > & " ' para que nunca se interpreten como etiquetas.
+ * Acepta null/undefined/números y devuelve string.
+ */
+function escaparHTML(valor) {
+    if (valor === null || valor === undefined) return '';
+    return String(valor)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// ==============================================
 // Tarjeta visual de desglose QQ por estado de campaña
 // Usada en ficha de arrendador y ficha de grupo.
 // ==============================================

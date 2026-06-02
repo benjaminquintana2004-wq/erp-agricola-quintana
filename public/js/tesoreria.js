@@ -1053,10 +1053,10 @@ Formato de respuesta (solo JSON, sin markdown):
 
         for (let intento = 0; intento < 3; intento++) {
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
-                const response = await fetch(url, {
+                // La clave de Gemini vive en la Edge Function, no en el navegador.
+                const response = await fetch(urlProxyGemini(modelo), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: await headersProxyIA(),
                     body: JSON.stringify({
                         contents: [{
                             parts: [
@@ -1138,14 +1138,10 @@ Formato de respuesta (solo JSON, sin markdown ni explicaciones):
     // Hasta 3 intentos con backoff (1s, 2s, 4s)
     for (let intento = 1; intento <= 3; intento++) {
         try {
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
+            // La clave de Claude vive en la Edge Function, no en el navegador.
+            const response = await fetch(urlProxyAnthropic(), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
+                headers: await headersProxyIA(),
                 body: JSON.stringify({
                     model: 'claude-sonnet-4-5',
                     max_tokens: 1024,
@@ -1596,13 +1592,8 @@ async function extraerDatosPendiente(tempId, ia) {
     const p = facturasPendientesNuevas.find(x => x.tempId === tempId);
     if (!p || p.tipo !== 'nueva' || !p.file) return;
 
-    const apiKey = ia === 'gemini'
-        ? window.__ENV__?.GEMINI_API_KEY
-        : window.__ENV__?.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-        mostrarError(`La API Key de ${ia === 'gemini' ? 'Gemini' : 'Claude'} no está configurada.`);
-        return;
-    }
+    // La clave real vive en la Edge Function; el navegador no la maneja.
+    const apiKey = 'proxy';
 
     mostrarAlerta(`Extrayendo datos con ${ia === 'gemini' ? 'Gemini' : 'Claude'}... puede tardar unos segundos.`, 'info');
 
@@ -1934,13 +1925,8 @@ async function procesarSubidaFacturaNueva(chequeId, file) {
  * Después detecta si el (numero+cuit) ya existe en otra factura → avisa para deduplicar.
  */
 async function extraerDatosFacturaDB(facturaId, ia) {
-    const apiKey = ia === 'gemini'
-        ? window.__ENV__?.GEMINI_API_KEY
-        : window.__ENV__?.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-        mostrarError(`La API Key de ${ia === 'gemini' ? 'Gemini' : 'Claude'} no está configurada.`);
-        return;
-    }
+    // La clave real vive en la Edge Function; el navegador no la maneja.
+    const apiKey = 'proxy';
 
     const { data: f, error } = await db.from('facturas').select('*').eq('id', facturaId).single();
     if (error || !f) { mostrarError('No se encontró la factura.'); return; }
@@ -3225,10 +3211,10 @@ async function llamarGeminiEcheq(apiKey, pdfBase64) {
         const modelo = modelos[m];
         for (let intento = 1; intento <= 2; intento++) {
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
-                const response = await fetch(url, {
+                // La clave de Gemini vive en la Edge Function, no en el navegador.
+                const response = await fetch(urlProxyGemini(modelo), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: await headersProxyIA(),
                     body: JSON.stringify({
                         contents: [{
                             parts: [
@@ -3274,14 +3260,10 @@ async function llamarClaudeEcheq(apiKey, pdfBase64) {
 
     for (let intento = 1; intento <= 3; intento++) {
         try {
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
+            // La clave de Claude vive en la Edge Function, no en el navegador.
+            const response = await fetch(urlProxyAnthropic(), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
+                headers: await headersProxyIA(),
                 body: JSON.stringify({
                     model: 'claude-sonnet-4-5',
                     max_tokens: 4096,
@@ -3433,13 +3415,8 @@ function quitarEcheqPDF() {
 }
 
 async function extraerEcheq(ia) {
-    const apiKey = ia === 'gemini'
-        ? window.__ENV__?.GEMINI_API_KEY
-        : window.__ENV__?.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-        mostrarError(`La API Key de ${ia === 'gemini' ? 'Gemini' : 'Claude'} no está configurada.`);
-        return;
-    }
+    // La clave real vive en la Edge Function; el navegador no la maneja.
+    const apiKey = 'proxy';
     if (!echeqFileSeleccionado) {
         mostrarError('Subí primero el PDF.');
         return;
@@ -4682,11 +4659,8 @@ async function procesarExtracto() {
     if (!archivo)  { mostrarError('Seleccioná un archivo PDF del extracto.'); return; }
     if (archivo.type !== 'application/pdf') { mostrarError('El archivo debe ser un PDF.'); return; }
 
-    const geminiKey = window.__ENV__?.GEMINI_API_KEY;
-    if (!geminiKey) {
-        mostrarError('La API Key de Gemini no está configurada. Avisale al administrador.');
-        return;
-    }
+    // La clave de Gemini vive en la Edge Function; el navegador no la maneja.
+    const geminiKey = 'proxy';
 
     // Estado: procesando
     contenedor.innerHTML = `
@@ -4783,11 +4757,10 @@ Formato de respuesta (SOLO el JSON, sin markdown, sin explicaciones, sin bloques
   }
 ]`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-    const response = await fetch(url, {
+    // La clave de Gemini vive en la Edge Function, no en el navegador.
+    const response = await fetch(urlProxyGemini('gemini-2.5-flash'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await headersProxyIA(),
         body: JSON.stringify({
             contents: [{
                 parts: [

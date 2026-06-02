@@ -243,13 +243,13 @@ function renderizarTablaGrupos(grupos) {
         const tipoBadge = renderizarTipoBadge(g.tipo);
         const idsParam = g.memberIds.join(',');
         const subtitulo = g.miembros.length === 1
-            ? (g.miembros[0].cuit || (g.miembros[0].dni ? `DNI ${g.miembros[0].dni}` : ''))
+            ? escaparHTML(g.miembros[0].cuit || (g.miembros[0].dni ? `DNI ${g.miembros[0].dni}` : ''))
             : `${g.miembros.length} arrendadores`;
 
         return `
         <tr style="cursor:pointer;" onclick="window.location.href='/grupo.html?ids=${idsParam}'">
             <td>
-                <strong>${g.nombre}</strong>
+                <strong>${escaparHTML(g.nombre)}</strong>
                 ${subtitulo ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${subtitulo}</span>` : ''}
             </td>
             <td>${tipoBadge}</td>
@@ -510,29 +510,29 @@ function abrirModalArrendador(titulo, datos) {
 
         <div class="campo-grupo">
             <label class="campo-label">Nombre completo / Razón social <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Ej: Roberto Mateo Rebufatti / Agropecuaria del Sur S.A.">
+            <input type="text" id="campo-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Ej: Roberto Mateo Rebufatti / Agropecuaria del Sur S.A.">
         </div>
 
         <div id="bloque-persona" style="display: ${tipo === 'persona_fisica' ? 'block' : 'none'};">
             <div class="campos-fila">
                 <div class="campo-grupo">
                     <label class="campo-label">Nombre de pila</label>
-                    <input type="text" id="campo-nombre-pila" class="campo-input" value="${datos.nombre_pila || ''}" placeholder="Ej: Roberto Mateo">
+                    <input type="text" id="campo-nombre-pila" class="campo-input" value="${escaparHTML(datos.nombre_pila)}" placeholder="Ej: Roberto Mateo">
                 </div>
                 <div class="campo-grupo">
                     <label class="campo-label">Apellido</label>
-                    <input type="text" id="campo-apellido" class="campo-input" value="${datos.apellido || ''}" placeholder="Ej: Rebufatti">
+                    <input type="text" id="campo-apellido" class="campo-input" value="${escaparHTML(datos.apellido)}" placeholder="Ej: Rebufatti">
                     <span class="campo-ayuda">Se usa para armar "Familia X" en contratos</span>
                 </div>
             </div>
             <div class="campos-fila">
                 <div class="campo-grupo">
                     <label class="campo-label">DNI</label>
-                    <input type="text" id="campo-dni" class="campo-input" value="${datos.dni || ''}" placeholder="Ej: 10.677.055">
+                    <input type="text" id="campo-dni" class="campo-input" value="${escaparHTML(datos.dni)}" placeholder="Ej: 10.677.055">
                 </div>
                 <div class="campo-grupo">
                     <label class="campo-label">CUIT</label>
-                    <input type="text" id="campo-cuit" class="campo-input" value="${datos.cuit || ''}" placeholder="Ej: 20-10677055-8">
+                    <input type="text" id="campo-cuit" class="campo-input" value="${escaparHTML(datos.cuit)}" placeholder="Ej: 20-10677055-8">
                 </div>
             </div>
         </div>
@@ -540,7 +540,7 @@ function abrirModalArrendador(titulo, datos) {
         <div id="bloque-empresa" style="display: ${tipo === 'empresa' ? 'block' : 'none'};">
             <div class="campo-grupo">
                 <label class="campo-label">CUIT</label>
-                <input type="text" id="campo-cuit-empresa" class="campo-input" value="${tipo === 'empresa' ? (datos.cuit || '') : ''}" placeholder="Ej: 30-12345678-9">
+                <input type="text" id="campo-cuit-empresa" class="campo-input" value="${tipo === 'empresa' ? escaparHTML(datos.cuit) : ''}" placeholder="Ej: 30-12345678-9">
             </div>
 
             <hr class="form-separador">
@@ -556,7 +556,7 @@ function abrirModalArrendador(titulo, datos) {
 
         <div class="campo-grupo">
             <label class="campo-label">Domicilio</label>
-            <input type="text" id="campo-domicilio" class="campo-input" value="${datos.domicilio || ''}" placeholder="Ej: Villa Ascasubi, Córdoba">
+            <input type="text" id="campo-domicilio" class="campo-input" value="${escaparHTML(datos.domicilio)}" placeholder="Ej: Villa Ascasubi, Córdoba">
         </div>
 
         <hr class="form-separador">
@@ -565,11 +565,11 @@ function abrirModalArrendador(titulo, datos) {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Teléfono</label>
-                <input type="text" id="campo-telefono" class="campo-input" value="${datos.telefono || ''}" placeholder="Ej: 351-5551234">
+                <input type="text" id="campo-telefono" class="campo-input" value="${escaparHTML(datos.telefono)}" placeholder="Ej: 351-5551234">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Email</label>
-                <input type="email" id="campo-email" class="campo-input" value="${datos.email || ''}" placeholder="Ej: nombre@email.com">
+                <input type="email" id="campo-email" class="campo-input" value="${escaparHTML(datos.email)}" placeholder="Ej: nombre@email.com">
             </div>
         </div>
 
@@ -578,7 +578,7 @@ function abrirModalArrendador(titulo, datos) {
 
         <div class="campo-grupo">
             <label class="campo-label">Observaciones</label>
-            <textarea id="campo-notas" class="campo-textarea" placeholder="Ej: Prefiere cobrar en USD, el hijo maneja todo...">${datos.notas || ''}</textarea>
+            <textarea id="campo-notas" class="campo-textarea" placeholder="Ej: Prefiere cobrar en USD, el hijo maneja todo...">${escaparHTML(datos.notas)}</textarea>
         </div>
     `;
 
@@ -629,28 +629,28 @@ function renderRepresentantesArrendador() {
         <div style="border:1px solid var(--color-borde);border-radius:var(--radio-md);padding:var(--espacio-md);margin-bottom:var(--espacio-sm);background:var(--color-fondo-tarjeta);">
             <div class="campo-grupo">
                 <label class="campo-label">Nombre completo <span class="campo-requerido">*</span></label>
-                <input type="text" class="campo-input" value="${r.nombre_completo || ''}"
+                <input type="text" class="campo-input" value="${escaparHTML(r.nombre_completo)}"
                     placeholder="Ej: Hilda Rosa Grosso"
                     oninput="actualizarRepresentanteArrendador(${i}, 'nombre_completo', this.value)">
             </div>
             <div class="campos-fila">
                 <div class="campo-grupo">
                     <label class="campo-label">DNI</label>
-                    <input type="text" class="campo-input" value="${r.dni || ''}"
+                    <input type="text" class="campo-input" value="${escaparHTML(r.dni)}"
                         placeholder="13456913 (sin puntos)"
                         oninput="actualizarRepresentanteArrendador(${i}, 'dni', this.value)">
                     <span class="campo-ayuda">Si en el futuro firma un contrato propio, el sistema lo reconoce por DNI.</span>
                 </div>
                 <div class="campo-grupo">
                     <label class="campo-label">CUIT</label>
-                    <input type="text" class="campo-input" value="${r.cuit || ''}"
+                    <input type="text" class="campo-input" value="${escaparHTML(r.cuit)}"
                         placeholder="XX-XXXXXXXX-X"
                         oninput="actualizarRepresentanteArrendador(${i}, 'cuit', this.value)">
                 </div>
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Cargo</label>
-                <input type="text" class="campo-input" value="${r.cargo || ''}"
+                <input type="text" class="campo-input" value="${escaparHTML(r.cargo)}"
                     placeholder="Presidenta, Apoderado, Socio gerente, Heredera..."
                     oninput="actualizarRepresentanteArrendador(${i}, 'cargo', this.value)">
             </div>

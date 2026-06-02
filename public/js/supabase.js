@@ -29,6 +29,45 @@ function inicializarSupabase() {
 }
 
 // ==============================================
+// Proxy de IA (Supabase Edge Functions)
+// La clave de Gemini/Anthropic vive SOLO en el servidor.
+// El navegador llama a estas funciones, que verifican que el
+// usuario esté logueado y recién ahí usan la clave secreta.
+// ==============================================
+
+/** URL del proxy de Gemini. El modelo viaja como query param. */
+function urlProxyGemini(modelo = 'gemini-2.5-flash') {
+    const base = window.__ENV__?.SUPABASE_URL || '';
+    return `${base}/functions/v1/gemini-proxy?model=${encodeURIComponent(modelo)}`;
+}
+
+/** URL del proxy de Anthropic (Claude). */
+function urlProxyAnthropic() {
+    const base = window.__ENV__?.SUPABASE_URL || '';
+    return `${base}/functions/v1/anthropic-proxy`;
+}
+
+/**
+ * Headers para llamar a los proxies de IA.
+ * Incluye el token de sesión del usuario (la Edge Function exige login)
+ * y la apikey pública que el gateway de Supabase requiere.
+ */
+async function headersProxyIA() {
+    let token = window.__ENV__?.SUPABASE_ANON_KEY || '';
+    try {
+        const { data } = await db.auth.getSession();
+        if (data?.session?.access_token) token = data.session.access_token;
+    } catch (err) {
+        console.warn('No se pudo obtener la sesión para el proxy de IA:', err);
+    }
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': window.__ENV__?.SUPABASE_ANON_KEY || ''
+    };
+}
+
+// ==============================================
 // Funciones auxiliares para manejo de errores
 // ==============================================
 

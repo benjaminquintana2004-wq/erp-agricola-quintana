@@ -1065,11 +1065,8 @@ function configurarDragDropFactura() {
 async function extraerFacturaPDFLocal() {
     if (!archivoPDFFactura) return;
 
-    const geminiKey = window.__ENV__?.GEMINI_API_KEY;
-    if (!geminiKey) {
-        mostrarAlerta('API Key de Gemini no configurada. Cargá los datos manualmente.');
-        return;
-    }
+    // La clave de Gemini vive en la Edge Function; el navegador no la maneja.
+    const geminiKey = 'proxy';
 
     const container = document.getElementById('gemini-estado-container');
     if (container) {
@@ -1140,11 +1137,10 @@ Formato de respuesta (solo JSON, sin markdown):
     "grano": "tipo de grano (Soja/Maíz/Trigo/etc)"
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-    const response = await fetch(url, {
+    // La clave de Gemini vive en la Edge Function, no en el navegador.
+    const response = await fetch(urlProxyGemini('gemini-2.5-flash'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await headersProxyIA(),
         body: JSON.stringify({
             contents: [{
                 parts: [

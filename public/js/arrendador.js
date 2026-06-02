@@ -686,7 +686,7 @@ function renderizarTimeline(campanas, contratos, saldos, movimientos) {
             <div class="ficha-campana">
                 <div class="ficha-campana-header">
                     <div>
-                        <strong>${camp.nombre || `Campaña ${camp.anio_inicio}`}</strong>
+                        <strong>${escaparHTML(camp.nombre || `Campaña ${camp.anio_inicio}`)}</strong>
                         ${badge}
                     </div>
                     <div class="ficha-campana-meta">
@@ -858,7 +858,7 @@ function editarNotasFicha() {
         <textarea id="ficha-notas-textarea"
                   class="campo-textarea"
                   style="width:100%; min-height: 120px;"
-                  placeholder="Ej: Prefiere cobrar en USD. El hijo maneja todo, llamar al 351-xxxx. Pidió que las facturas se manden por email.">${arr.notas || ''}</textarea>
+                  placeholder="Ej: Prefiere cobrar en USD. El hijo maneja todo, llamar al 351-xxxx. Pidió que las facturas se manden por email.">${escaparHTML(arr.notas)}</textarea>
         <div style="display:flex; gap: var(--espacio-sm); margin-top: var(--espacio-sm); justify-content: flex-end;">
             <button class="btn-secundario btn-pequeno" onclick="cancelarNotasFicha()">Cancelar</button>
             <button class="btn-primario btn-pequeno" onclick="guardarNotasFicha()">Guardar</button>
@@ -920,14 +920,7 @@ function mostrarNotasLectura() {
     if (btn) btn.style.display = '';
 }
 
-/**
- * Escapa HTML para evitar inyecciones al renderizar notas del usuario.
- */
-function escaparHTML(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
+// escaparHTML() está definida en ui.js (compartida por toda la app)
 
 // ==============================================
 // ACCIONES
