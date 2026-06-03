@@ -413,9 +413,9 @@ function renderizarAcopios() {
 
         return `
         <tr>
-            <td><strong>${a.nombre}</strong></td>
-            <td>${a.ubicacion || '—'}</td>
-            <td>${a.contacto || '—'}</td>
+            <td><strong>${escaparHTML(a.nombre)}</strong></td>
+            <td>${escaparHTML(a.ubicacion) || '—'}</td>
+            <td>${escaparHTML(a.contacto) || '—'}</td>
             <td>${a.tarifa_qq_mes ? formatearMoneda(a.tarifa_qq_mes) : '—'}</td>
             <td>${stockHTML}</td>
             <td>
@@ -457,7 +457,7 @@ function abrirModalAcopio(titulo, datos) {
     const contenido = `
         <div class="campo-grupo">
             <label class="campo-label">Nombre <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-acopio-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Ej: ACA Berrotarán">
+            <input type="text" id="campo-acopio-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Ej: ACA Berrotarán">
         </div>
         <div class="campo-grupo">
             <label class="campo-label">Ubicación</label>

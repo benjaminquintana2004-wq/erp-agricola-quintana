@@ -124,8 +124,8 @@ function renderizarTabla(labores) {
             </td>
             <td>${tipoBadge}</td>
             <td>
-                ${l.producto ? `<strong>${l.producto}</strong>` : '—'}
-                ${l.observaciones ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${l.observaciones.substring(0, 40)}${l.observaciones.length > 40 ? '...' : ''}</span>` : ''}
+                ${l.producto ? `<strong>${escaparHTML(l.producto)}</strong>` : '—'}
+                ${l.observaciones ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${escaparHTML(l.observaciones.substring(0, 40))}${l.observaciones.length > 40 ? '...' : ''}</span>` : ''}
             </td>
             <td>${l.dosis ? `${l.dosis}${l.unidad ? ' ' + l.unidad : ''}` : '—'}</td>
             <td>${l.costo_total ? formatearMoneda(l.costo_total) : '—'}</td>
@@ -489,7 +489,7 @@ function verLabor(id) {
         ${l.observaciones ? `
             <hr class="form-separador">
             <div class="form-seccion-titulo">Observaciones</div>
-            <p style="color: var(--color-texto); font-size: var(--texto-base);">${l.observaciones}</p>
+            <p style="color: var(--color-texto); font-size: var(--texto-base);">${escaparHTML(l.observaciones)}</p>
         ` : ''}
     `;
 

@@ -107,10 +107,10 @@ function renderizarContratistas() {
 
         return `
         <tr>
-            <td><strong>${c.nombre || '—'}</strong></td>
-            <td>${c.cuit || '—'}</td>
-            <td>${c.telefono || '—'}</td>
-            <td>${c.especialidad || '—'}</td>
+            <td><strong>${escaparHTML(c.nombre) || '—'}</strong></td>
+            <td>${escaparHTML(c.cuit) || '—'}</td>
+            <td>${escaparHTML(c.telefono) || '—'}</td>
+            <td>${escaparHTML(c.especialidad) || '—'}</td>
             <td>${cantTrabajos}</td>
             <td>${deudaPendiente > 0
                 ? `<span class="badge badge-pendiente">$${formatearNumero(deudaPendiente)}</span>`
@@ -166,7 +166,7 @@ function abrirModalContratista(titulo, datos) {
     const contenido = `
         <div class="campo-grupo">
             <label class="campo-label">Nombre <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Nombre del contratista o empresa">
+            <input type="text" id="campo-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Nombre del contratista o empresa">
         </div>
         <div class="campos-fila">
             <div class="campo-grupo">
@@ -582,7 +582,7 @@ async function cargarChequesPorContratista(contratistaId) {
             <td style="white-space:nowrap;">${formatearFecha(c.fecha_cobro)}</td>
             <td style="font-family:var(--fuente-mono);">${c.numero_cheque || '—'}</td>
             <td>${c.cuentas_bancarias?.alias || '—'}</td>
-            <td>${c.categorias_gasto?.nombre || '—'}</td>
+            <td>${escaparHTML(c.categorias_gasto?.nombre) || '—'}</td>
             <td style="font-weight:600;font-family:var(--fuente-mono);white-space:nowrap;">$ ${formatearNumero(c.monto)}</td>
             <td>${badgeEstado}</td>
             <td style="white-space:nowrap;color:var(--color-texto-tenue);font-size:var(--texto-xs);">${formatearFecha(c.fecha_emision)}</td>

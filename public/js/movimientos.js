@@ -262,7 +262,7 @@ function renderizarTabla(movimientos) {
         const mostrarBtnEjec = puedeEditar && t && t.id
             && (estadoEjec === 'prometido_listo' || estadoEjec === 'prometido_vencido');
         const btnEjecutar = mostrarBtnEjec
-            ? `<button class="tabla-btn" style="color:var(--color-verde);" title="Ejecutar transferencia" onclick="confirmarEjecutarTransferencia('${t.id}', '${nombreArr.replace(/'/g, "\\'")}', ${Number(t.monto || total || 0)})">
+            ? `<button class="tabla-btn" style="color:var(--color-verde);" title="Ejecutar transferencia" onclick="confirmarEjecutarTransferencia('${t.id}', '${nombreArr.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', ${Number(t.monto || total || 0)})">
                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polyline points="20 6 9 17 4 12"/></svg>
                </button>`
             : '';
@@ -271,10 +271,10 @@ function renderizarTabla(movimientos) {
         <tr class="${filaClase}">
             <td>${formatearFecha(m.fecha)}</td>
             <td>
-                <strong>${nombreArr}</strong>
+                <strong>${escaparHTML(nombreArr)}</strong>
                 ${m.contratos?.nombre_grupo && m.contratos.nombre_grupo !== nombreArr
-                    ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${m.contratos.nombre_grupo}${m.contratos.campo ? ' · ' + m.contratos.campo : ''}</span>`
-                    : (m.arrendadores?.cuit ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${m.arrendadores.cuit}</span>` : '')}
+                    ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${escaparHTML(m.contratos.nombre_grupo)}${m.contratos.campo ? ' · ' + escaparHTML(m.contratos.campo) : ''}</span>`
+                    : (m.arrendadores?.cuit ? `<br><span style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">${escaparHTML(m.arrendadores.cuit)}</span>` : '')}
             </td>
             <td><strong>${formatearQQ(m.qq)}</strong></td>
             <td>
@@ -297,7 +297,7 @@ function renderizarTabla(movimientos) {
                         </button>
                     ` : ''}
                     ${puedeEliminar ? `
-                        <button class="tabla-btn btn-eliminar" onclick="confirmarEliminarMovimiento('${m.id}', '${nombreArr.replace(/'/g, "\\'")}')" title="Eliminar">
+                        <button class="tabla-btn btn-eliminar" onclick="confirmarEliminarMovimiento('${m.id}', '${nombreArr.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="Eliminar">
                             ${ICONOS.eliminar}
                         </button>
                     ` : ''}
@@ -562,7 +562,7 @@ function mostrarAlertasFacturas(movimientos) {
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
                 <span><strong>${urgentes.length} factura${urgentes.length > 1 ? 's' : ''} pendiente${urgentes.length > 1 ? 's' : ''} hace más de 20 días:</strong>
-                ${urgentes.map(m => `${m.arrendadores?.nombre || '?'} (${formatearQQ(m.qq)})`).join(', ')}</span>
+                ${urgentes.map(m => `${escaparHTML(m.arrendadores?.nombre || '?')} (${formatearQQ(m.qq)})`).join(', ')}</span>
             </div>
         `;
     }
@@ -581,7 +581,7 @@ function mostrarAlertasFacturas(movimientos) {
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
                 <span><strong>${alerta.length} factura${alerta.length > 1 ? 's' : ''} pendiente${alerta.length > 1 ? 's' : ''} (10-20 días):</strong>
-                ${alerta.map(m => `${m.arrendadores?.nombre || '?'} (${formatearQQ(m.qq)})`).join(', ')}</span>
+                ${alerta.map(m => `${escaparHTML(m.arrendadores?.nombre || '?')} (${formatearQQ(m.qq)})`).join(', ')}</span>
             </div>
         `;
     }
@@ -748,7 +748,7 @@ function abrirModalMovimiento(titulo, datos) {
 
         <div class="campo-grupo">
             <label class="campo-label">Observaciones</label>
-            <textarea id="campo-observaciones" class="campo-textarea" rows="2" placeholder="Notas adicionales...">${datos.observaciones || ''}</textarea>
+            <textarea id="campo-observaciones" class="campo-textarea" rows="2" placeholder="Notas adicionales...">${escaparHTML(datos.observaciones)}</textarea>
         </div>
 
         <hr class="form-separador">
@@ -1591,11 +1591,11 @@ function verMovimiento(id) {
         <div class="contrato-detalle-grid">
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Contrato</span>
-                <span class="contrato-detalle-valor">${grupoContrato}</span>
+                <span class="contrato-detalle-valor">${escaparHTML(grupoContrato)}</span>
             </div>
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Quién facturó</span>
-                <span class="contrato-detalle-valor"><strong>${nombreArr}</strong></span>
+                <span class="contrato-detalle-valor"><strong>${escaparHTML(nombreArr)}</strong></span>
             </div>
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Fecha</span>
@@ -1646,7 +1646,7 @@ function verMovimiento(id) {
         ${m.observaciones ? `
             <hr class="form-separador">
             <div class="form-seccion-titulo">Observaciones</div>
-            <p style="color: var(--color-texto); font-size: var(--texto-base);">${m.observaciones}</p>
+            <p style="color: var(--color-texto); font-size: var(--texto-base);">${escaparHTML(m.observaciones)}</p>
         ` : ''}
 
         ${m.pdf_url ? `

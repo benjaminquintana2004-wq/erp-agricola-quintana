@@ -672,9 +672,9 @@ function renderizarMovimientos() {
             <td style="white-space:nowrap;">${formatearFecha(m.fecha_cobro)}</td>
             <td>${badgeTipo}</td>
             <td style="font-family:var(--fuente-mono);">${m.numero_cheque || '—'}</td>
-            <td><strong>${m.beneficiarios?.nombre || '—'}</strong></td>
+            <td><strong>${escaparHTML(m.beneficiarios?.nombre) || '—'}</strong></td>
             <td>${badgeTipoBen(m.beneficiarios?.tipo)}</td>
-            <td>${m.categorias_gasto?.nombre || '—'}</td>
+            <td>${escaparHTML(m.categorias_gasto?.nombre) || '—'}</td>
             <td style="font-weight:600;font-family:var(--fuente-mono);white-space:nowrap;">$ ${formatearNumero(m.monto)}</td>
             <td>${badgeEstado}</td>
             <td style="text-align:center;">${badgeFactura(estadoFact)}</td>
@@ -925,7 +925,7 @@ function abrirModalCheque(datos = {}, opciones = {}) {
         <div class="campo-grupo">
             <label class="campo-label">Notas</label>
             <input type="text" id="campo-notas" class="campo-input"
-                value="${datos.notas || ''}"
+                value="${escaparHTML(datos.notas)}"
                 placeholder="Observaciones opcionales">
         </div>
 
@@ -1221,11 +1221,11 @@ function verDetalleCheque(id) {
             </div>
             <div>
                 <div style="font-size:var(--texto-xs);font-weight:600;color:var(--color-texto-secundario);margin-bottom:var(--espacio-xs);text-transform:uppercase;letter-spacing:0.05em;">DESTINO</div>
-                ${fila('Beneficiario', m.beneficiarios?.nombre || '—')}
+                ${fila('Beneficiario', escaparHTML(m.beneficiarios?.nombre) || '—')}
                 ${fila('Tipo', badgeTipoBen(m.beneficiarios?.tipo))}
-                ${fila('Categoría', m.categorias_gasto?.nombre || '—')}
-                ${m.empleado_entrega ? fila('Entregado por', m.empleado_entrega.nombre) : ''}
-                ${m.notas ? fila('Notas', m.notas) : ''}
+                ${fila('Categoría', escaparHTML(m.categorias_gasto?.nombre) || '—')}
+                ${m.empleado_entrega ? fila('Entregado por', escaparHTML(m.empleado_entrega.nombre)) : ''}
+                ${m.notas ? fila('Notas', escaparHTML(m.notas)) : ''}
             </div>
         </div>
         <div id="bloque-facturas-detalle" style="margin-top:var(--espacio-md);">
@@ -1418,12 +1418,12 @@ function renderizarSeccionFacturasCheque(m, soloLectura = false) {
             <div style="flex:1;min-width:180px;">
                 <div style="font-size:var(--texto-sm);font-weight:500;color:var(--color-texto);">
                     <span style="font-family:var(--fuente-mono);">${f.numero || '(sin nº — pendiente de extraer)'}</span>
-                    ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);"> · ${f.emisor_nombre}</span>` : ''}
+                    ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);"> · ${escaparHTML(f.emisor_nombre)}</span>` : ''}
                 </div>
                 <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">
                     ${f.fecha ? formatearFecha(f.fecha) : 'Sin fecha'}
                     ${f.monto_total ? ` · $ ${formatearNumero(f.monto_total)}` : ''}
-                    ${f.emisor_cuit ? ` · CUIT ${f.emisor_cuit}` : ''}
+                    ${f.emisor_cuit ? ` · CUIT ${escaparHTML(f.emisor_cuit)}` : ''}
                 </div>
                 ${(f._cheques_ids || []).length > 1 ? `
                     <div style="font-size:var(--texto-xs);color:var(--color-dorado);margin-top:2px;">
@@ -1702,7 +1702,7 @@ function filtrarFacturasParaPendiente() {
             <div style="min-width:0;flex:1;">
                 <div style="font-weight:600;font-size:var(--texto-sm);">${f.numero || '(sin nº)'}${f.monto_total ? ' — $ ' + formatearNumero(f.monto_total) : ''}</div>
                 <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">
-                    ${[f.emisor_nombre, f.emisor_cuit, f.fecha ? formatearFecha(f.fecha) : null].filter(Boolean).join(' · ')}
+                    ${[escaparHTML(f.emisor_nombre), escaparHTML(f.emisor_cuit), f.fecha ? formatearFecha(f.fecha) : null].filter(Boolean).join(' · ')}
                 </div>
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0;">
@@ -2060,12 +2060,12 @@ function filtrarFacturasVinculables() {
             <div style="flex:1;min-width:0;">
                 <div style="font-size:var(--texto-sm);font-weight:500;color:var(--color-texto);">
                     <span style="font-family:var(--fuente-mono);">${f.numero || '(sin nº)'}</span>
-                    ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);"> · ${f.emisor_nombre}</span>` : ''}
+                    ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);"> · ${escaparHTML(f.emisor_nombre)}</span>` : ''}
                 </div>
                 <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">
                     ${f.fecha ? formatearFecha(f.fecha) : 'Sin fecha'}
                     ${f.monto_total ? ` · $ ${formatearNumero(f.monto_total)}` : ''}
-                    ${f.emisor_cuit ? ` · CUIT ${f.emisor_cuit}` : ''}
+                    ${f.emisor_cuit ? ` · CUIT ${escaparHTML(f.emisor_cuit)}` : ''}
                 </div>
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0;">
@@ -2181,12 +2181,12 @@ async function abrirModalEditarFactura(facturaId) {
             <div class="campo-grupo">
                 <label class="campo-label">Emisor (razón social)</label>
                 <input type="text" id="edit-fact-emisor-nom" class="campo-input"
-                    value="${f.emisor_nombre || ''}" placeholder="Ej: Veron Jorge Omar">
+                    value="${escaparHTML(f.emisor_nombre)}" placeholder="Ej: Veron Jorge Omar">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">CUIT emisor</label>
                 <input type="text" id="edit-fact-emisor-cuit" class="campo-input"
-                    value="${f.emisor_cuit || ''}" placeholder="Ej: 20-12345678-9">
+                    value="${escaparHTML(f.emisor_cuit)}" placeholder="Ej: 20-12345678-9">
             </div>
         </div>
         <div class="campo-grupo">
@@ -3599,9 +3599,9 @@ function renderEcheqBloqueBeneficiario() {
     // Cartel arriba con la lectura del PDF, para que el usuario sepa qué dijo la IA
     const aviso = `
         <div style="padding:var(--espacio-xs) var(--espacio-sm);background:var(--color-fondo-secundario);border-radius:var(--radio-sm,4px);font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-bottom:var(--espacio-sm);">
-            📄 Detectado del PDF: <strong style="color:var(--color-texto);">${benNom || '—'}</strong>${benCuit ? ` · CUIT ${benCuit}` : ''}
+            📄 Detectado del PDF: <strong style="color:var(--color-texto);">${escaparHTML(benNom) || '—'}</strong>${benCuit ? ` · CUIT ${escaparHTML(benCuit)}` : ''}
             ${mt !== 'otro' && echeqMetadata?.beneficiario_match_nombre
-                ? `<br><span style="color:var(--color-verde);">✓ Coincide con ${echeqMetadata.beneficiario_match_nombre} (${mt})</span>`
+                ? `<br><span style="color:var(--color-verde);">✓ Coincide con ${escaparHTML(echeqMetadata.beneficiario_match_nombre)} (${mt})</span>`
                 : ''}
         </div>
     `;
@@ -4349,7 +4349,7 @@ function renderizarPrestamos() {
                 <div class="prestamo-info">
                     <div class="prestamo-acreedor">${p.acreedor}</div>
                     <div class="prestamo-datos">
-                        ${p.empresas?.nombre || ''} · ${p.moneda} · ${p.cantidad_cuotas} cuotas ·
+                        ${escaparHTML(p.empresas?.nombre) || ''} · ${p.moneda} · ${p.cantidad_cuotas} cuotas ·
                         Otorgado ${formatearFecha(p.fecha_otorgamiento)} ·
                         <span class="badge ${p.estado === 'vigente' ? 'badge-cobrado' : 'badge-anulado'}">${p.estado}</span>
                     </div>
@@ -4623,7 +4623,7 @@ function buscarPorMonto(montoStr) {
                         <tr>
                             <td>${formatearFecha(m.fecha_cobro)}</td>
                             <td>${m.numero_cheque || '—'}</td>
-                            <td>${m.beneficiarios?.nombre || '—'}</td>
+                            <td>${escaparHTML(m.beneficiarios?.nombre) || '—'}</td>
                             <td style="font-family:var(--fuente-mono);font-weight:600;">$ ${formatearNumero(m.monto)}</td>
                             <td>
                                 <button class="btn-primario" style="padding:var(--espacio-xs) var(--espacio-md);font-size:var(--texto-sm);"
@@ -4643,7 +4643,7 @@ function poblarSelectCuentasConciliacion() {
     const select = document.getElementById('extracto-cuenta');
     if (!select) return;
     select.innerHTML = '<option value="">Seleccionar cuenta...</option>' +
-        cuentas.map(c => `<option value="${c.id}">${c.empresas?.nombre || ''} — ${c.alias || c.banco} (${c.moneda})</option>`).join('');
+        cuentas.map(c => `<option value="${c.id}">${escaparHTML(c.empresas?.nombre) || ''} — ${escaparHTML(c.alias || c.banco)} (${c.moneda})</option>`).join('');
 }
 
 // ==============================================
@@ -4891,11 +4891,11 @@ function mostrarResultadoConciliacion(resultado, contenedor) {
                     ${conciliados.map((c, i) => `
                         <tr>
                             <td>${c.banco.fecha}</td>
-                            <td style="font-size:var(--texto-sm);max-width:200px;white-space:normal;">${c.banco.descripcion || '—'}</td>
-                            <td style="font-family:var(--fuente-mono);">${c.banco.numero_cheque || '—'}</td>
+                            <td style="font-size:var(--texto-sm);max-width:200px;white-space:normal;">${escaparHTML(c.banco.descripcion) || '—'}</td>
+                            <td style="font-family:var(--fuente-mono);">${escaparHTML(c.banco.numero_cheque) || '—'}</td>
                             <td style="font-family:var(--fuente-mono);font-weight:600;">$ ${formatearNumero(c.banco.monto)}</td>
-                            <td style="font-family:var(--fuente-mono);">${c.cheque.numero_cheque || 'Transf.'}</td>
-                            <td>${c.cheque.beneficiarios?.nombre || '—'}</td>
+                            <td style="font-family:var(--fuente-mono);">${escaparHTML(c.cheque.numero_cheque) || 'Transf.'}</td>
+                            <td>${escaparHTML(c.cheque.beneficiarios?.nombre) || '—'}</td>
                             <td><span class="badge ${c.metodo === 'numero' ? 'badge-cobrado' : 'badge-transferencia'}">${c.metodo === 'numero' ? 'N° cheque' : 'Monto'}</span></td>
                             <td>
                                 <button class="btn-primario" style="padding:var(--espacio-xs) var(--espacio-md);font-size:var(--texto-sm);"
@@ -4927,15 +4927,15 @@ function mostrarResultadoConciliacion(resultado, contenedor) {
                 ${manuales.map((m, i) => `
                     <div style="border:1px solid var(--color-dorado);border-radius:var(--radio-md);padding:var(--espacio-md);margin-bottom:var(--espacio-md);background:rgba(201,168,76,0.05);">
                         <div style="font-size:var(--texto-sm);margin-bottom:var(--espacio-sm);">
-                            <strong>Débito del banco:</strong> ${m.banco.fecha} — ${m.banco.descripcion || 'Sin descripción'} — <span style="font-family:var(--fuente-mono);font-weight:700;">$ ${formatearNumero(m.banco.monto)}</span>
+                            <strong>Débito del banco:</strong> ${m.banco.fecha} — ${escaparHTML(m.banco.descripcion) || 'Sin descripción'} — <span style="font-family:var(--fuente-mono);font-weight:700;">$ ${formatearNumero(m.banco.monto)}</span>
                         </div>
                         <div style="font-size:var(--texto-sm);color:var(--color-texto-secundario);margin-bottom:var(--espacio-sm);">Cheques pendientes con ese monto:</div>
                         <div style="display:flex;flex-direction:column;gap:var(--espacio-xs);">
                         ${m.candidatos.map(c => `
                             <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--espacio-xs) var(--espacio-md);background:var(--color-fondo-tarjeta);border-radius:var(--radio-sm);border:1px solid var(--color-borde);">
                                 <div style="font-size:var(--texto-sm);">
-                                    <span style="font-family:var(--fuente-mono);">${c.numero_cheque || 'Sin nro.'}</span>
-                                    ${c.beneficiarios?.nombre ? ` — ${c.beneficiarios.nombre}` : ''}
+                                    <span style="font-family:var(--fuente-mono);">${escaparHTML(c.numero_cheque) || 'Sin nro.'}</span>
+                                    ${c.beneficiarios?.nombre ? ` — ${escaparHTML(c.beneficiarios.nombre)}` : ''}
                                     — vence <strong>${c.fecha_cobro}</strong>
                                 </div>
                                 <button class="btn-primario" style="padding:var(--espacio-xs) var(--espacio-md);font-size:var(--texto-sm);"
@@ -4965,8 +4965,8 @@ function mostrarResultadoConciliacion(resultado, contenedor) {
                     ${sinMatch.map(m => `
                         <tr>
                             <td>${m.fecha}</td>
-                            <td style="font-size:var(--texto-sm);max-width:240px;white-space:normal;">${m.descripcion || '—'}</td>
-                            <td style="font-family:var(--fuente-mono);">${m.numero_cheque || '—'}</td>
+                            <td style="font-size:var(--texto-sm);max-width:240px;white-space:normal;">${escaparHTML(m.descripcion) || '—'}</td>
+                            <td style="font-family:var(--fuente-mono);">${escaparHTML(m.numero_cheque) || '—'}</td>
                             <td style="font-family:var(--fuente-mono);font-weight:600;color:var(--color-error);">$ ${formatearNumero(m.monto)}</td>
                         </tr>
                     `).join('')}
@@ -4995,8 +4995,8 @@ function mostrarResultadoConciliacion(resultado, contenedor) {
                     <tbody>
                     ${chequesResto.map(c => `
                         <tr>
-                            <td style="font-family:var(--fuente-mono);">${c.numero_cheque || 'Transf.'}</td>
-                            <td>${c.beneficiarios?.nombre || '—'}</td>
+                            <td style="font-family:var(--fuente-mono);">${escaparHTML(c.numero_cheque) || 'Transf.'}</td>
+                            <td>${escaparHTML(c.beneficiarios?.nombre) || '—'}</td>
                             <td>${c.fecha_cobro}</td>
                             <td style="font-family:var(--fuente-mono);">$ ${formatearNumero(c.monto)}</td>
                         </tr>

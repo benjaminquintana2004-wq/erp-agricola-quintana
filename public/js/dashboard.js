@@ -395,8 +395,8 @@ function renderizarContratosPanel(contratos) {
                         return `
                     <tr>
                         <td>
-                            <strong>${nombre}</strong>
-                            ${c.campo ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${c.campo}</span>` : ''}
+                            <strong>${escaparHTML(nombre)}</strong>
+                            ${c.campo ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${escaparHTML(c.campo)}</span>` : ''}
                         </td>
                         <td style="white-space:nowrap;">${tel || '<span style="color:var(--color-texto-tenue);">—</span>'}</td>
                         <td style="white-space:nowrap;">${c.hectareas ? Number(c.hectareas).toLocaleString('es-AR') + ' ha' : '—'}</td>
@@ -454,7 +454,7 @@ function renderizarUltimosMovimientos(movimientos) {
         return `
         <div class="mov-item">
             <div class="mov-fecha">${formatearFechaCorta(m.fecha)}</div>
-            <div class="mov-nombre">${m.arrendadores?.nombre || '—'}</div>
+            <div class="mov-nombre">${escaparHTML(m.arrendadores?.nombre) || '—'}</div>
             <div class="mov-qq">${formatearQQ(m.qq)}</div>
             <div class="mov-tipo">${tipoBadge}</div>
         </div>
@@ -698,7 +698,7 @@ function renderizarCumplimiento(saldos, movimientos) {
         return `
         <a class="cumplimiento-item" href="/contratos.html?id=${f.contratoId}">
             <div class="cumplimiento-header">
-                <span class="cumplimiento-nombre">${f.nombre}</span>
+                <span class="cumplimiento-nombre">${escaparHTML(f.nombre)}</span>
                 <span class="cumplimiento-pct ${claseBarra.replace('barra', 'texto')}">${f.pct}%</span>
             </div>
             <div class="cumplimiento-barra-track">
@@ -789,7 +789,7 @@ function renderizarDemoraFacturacion(movimientos) {
         return `
         <a class="demora-item" href="/arrendador.html?id=${r.arrendadorId}">
             <div class="demora-izq">
-                <div class="demora-nombre">${r.nombre}</div>
+                <div class="demora-nombre">${escaparHTML(r.nombre)}</div>
                 <div class="demora-detalle">
                     ${r.cantidad} factura${r.cantidad === 1 ? '' : 's'} pendiente${r.cantidad === 1 ? '' : 's'}
                     · ${formatearQQ(r.qqTotal)}

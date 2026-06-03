@@ -80,8 +80,8 @@ function renderizarTabla(insumos) {
 
         return `
         <tr>
-            <td><strong>${i.nombre}</strong></td>
-            <td>${i.tipo || '—'}</td>
+            <td><strong>${escaparHTML(i.nombre)}</strong></td>
+            <td>${escaparHTML(i.tipo) || '—'}</td>
             <td>
                 <strong>${stockActual.toLocaleString('es-AR', { minimumFractionDigits: 0 })}</strong>
                 ${i.unidad ? `<span style="color:var(--color-texto-tenue);"> ${i.unidad}</span>` : ''}
@@ -193,7 +193,7 @@ function abrirModalInsumo(titulo, datos) {
     const contenido = `
         <div class="campo-grupo">
             <label class="campo-label">Nombre <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Ej: Glifosato 48%, Urea granulada">
+            <input type="text" id="campo-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Ej: Glifosato 48%, Urea granulada">
         </div>
 
         <div class="campos-fila">

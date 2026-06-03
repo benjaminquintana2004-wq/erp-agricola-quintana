@@ -99,15 +99,15 @@ function renderizarTabla(lotes) {
         if (campanaActual) {
             campanaInfo = `
                 <span style="font-weight:600;">${campanaActual.cultivo || '?'}</span>
-                ${campanaActual.variedad ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${campanaActual.variedad}</span>` : ''}
+                ${campanaActual.variedad ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${escaparHTML(campanaActual.variedad)}</span>` : ''}
                 ${campanaActual.qq_reales ? `<br><span style="font-size:var(--texto-xs);color:var(--color-verde);font-weight:600;">${formatearQQ(campanaActual.qq_reales)} reales</span>` : ''}
             `;
         }
 
         return `
         <tr>
-            <td><strong>${l.nombre}</strong></td>
-            <td>${l.campo || '—'}</td>
+            <td><strong>${escaparHTML(l.nombre)}</strong></td>
+            <td>${escaparHTML(l.campo) || '—'}</td>
             <td>${l.hectareas ? Number(l.hectareas).toLocaleString('es-AR') + ' ha' : '—'}</td>
             <td>${nombreArr}</td>
             <td>${estadoBadge}</td>
@@ -234,7 +234,7 @@ function abrirModalLote(titulo, datos) {
 
         <div class="campo-grupo">
             <label class="campo-label">Nombre del lote <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Ej: Lote 5 Norte">
+            <input type="text" id="campo-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Ej: Lote 5 Norte">
         </div>
 
         <div class="campos-fila">
@@ -297,7 +297,7 @@ function abrirModalLote(titulo, datos) {
                 </div>
                 <div class="campo-grupo">
                     <label class="campo-label">Variedad</label>
-                    <input type="text" id="campo-variedad" class="campo-input" value="${campanaActual?.variedad || ''}" placeholder="Ej: DM 46i17">
+                    <input type="text" id="campo-variedad" class="campo-input" value="${escaparHTML(campanaActual?.variedad)}" placeholder="Ej: DM 46i17">
                 </div>
             </div>
 
@@ -499,8 +499,8 @@ function verLote(id) {
                         return `
                         <tr>
                             <td>${lc.campanas?.nombre || '—'} ${lc.campanas?.activa ? '<span class="badge badge-verde" style="font-size:0.6rem;padding:1px 5px;">Activa</span>' : ''}</td>
-                            <td><strong>${lc.cultivo || '—'}</strong></td>
-                            <td>${lc.variedad || '—'}</td>
+                            <td><strong>${escaparHTML(lc.cultivo) || '—'}</strong></td>
+                            <td>${escaparHTML(lc.variedad) || '—'}</td>
                             <td>${lc.fecha_siembra ? formatearFecha(lc.fecha_siembra) : '—'}</td>
                             <td>${lc.qq_estimados || '—'}</td>
                             <td>${lc.qq_reales || '—'}</td>
@@ -517,7 +517,7 @@ function verLote(id) {
         <div class="contrato-detalle-grid">
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Nombre</span>
-                <span class="contrato-detalle-valor"><strong>${l.nombre}</strong></span>
+                <span class="contrato-detalle-valor"><strong>${escaparHTML(l.nombre)}</strong></span>
             </div>
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Ubicación</span>

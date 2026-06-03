@@ -119,10 +119,10 @@ function renderizarEmpleados() {
 
         return `
         <tr>
-            <td><strong>${e.nombre || '—'}</strong></td>
-            <td>${e.dni || '—'}</td>
-            <td>${e.cuil || '—'}</td>
-            <td>${e.rol || '—'}</td>
+            <td><strong>${escaparHTML(e.nombre) || '—'}</strong></td>
+            <td>${escaparHTML(e.dni) || '—'}</td>
+            <td>${escaparHTML(e.cuil) || '—'}</td>
+            <td>${escaparHTML(e.rol) || '—'}</td>
             <td>${e.fecha_ingreso ? formatearFecha(e.fecha_ingreso) : '—'}</td>
             <td>${e.jornal_diario ? '$' + formatearNumero(e.jornal_diario) : '—'}</td>
             <td>${estadoBadge}</td>
@@ -177,7 +177,7 @@ function abrirModalEmpleado(titulo, datos) {
     const contenido = `
         <div class="campo-grupo">
             <label class="campo-label">Nombre completo <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Nombre y apellido">
+            <input type="text" id="campo-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Nombre y apellido">
         </div>
         <div class="campos-fila">
             <div class="campo-grupo">

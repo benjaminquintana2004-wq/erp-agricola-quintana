@@ -171,7 +171,7 @@ function renderizarGridPlantillas() {
             <div class="reporte-card-icono">${p.icono}</div>
             <div class="reporte-card-categoria">${p.categoria}</div>
             <h3 class="reporte-card-titulo">${p.titulo}</h3>
-            <p class="reporte-card-descripcion">${p.descripcion}</p>
+            <p class="reporte-card-descripcion">${escaparHTML(p.descripcion)}</p>
         </div>
     `).join('');
 }
@@ -377,9 +377,9 @@ function renderContratosPorVencer(rows, filtros) {
         const { fecha, label } = fechaConDiff(c.fecha_fin);
         return `
             <tr>
-                <td><strong>${grupo}</strong>${c.nombre_grupo && nombres !== grupo ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${nombres}</span>` : ''}</td>
+                <td><strong>${escaparHTML(grupo)}</strong>${c.nombre_grupo && nombres !== grupo ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${escaparHTML(nombres)}</span>` : ''}</td>
                 <td>${nombreEmpresaCorto(c.empresa)}</td>
-                <td>${c.campo || '—'}</td>
+                <td>${escaparHTML(c.campo) || '—'}</td>
                 <td>${c.hectareas ? formatearNumero(c.hectareas) + ' ha' : '—'}</td>
                 <td>${formatearNumero(c.qq_pactados_anual || 0)} qq</td>
                 <td>${fecha}<br><span style="font-size:var(--texto-xs);color:var(--color-dorado);">${label}</span></td>
@@ -505,9 +505,9 @@ function renderAdelantosPendientes(rows) {
         }
         return `
             <tr>
-                <td><strong>${grupo}</strong></td>
+                <td><strong>${escaparHTML(grupo)}</strong></td>
                 <td>${nombreEmpresaCorto(c.empresa)}</td>
-                <td>${c.campo || '—'}</td>
+                <td>${escaparHTML(c.campo) || '—'}</td>
                 <td>${formatearNumero(c.adelanto_qq)} qq</td>
                 <td>${venc}<br><span style="font-size:var(--texto-xs);color:var(--color-dorado);">${label}</span></td>
                 <td style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${c.adelanto_observaciones || ''}</td>
@@ -634,7 +634,7 @@ function renderSaldosGrupos(rows) {
         const total = g.blanco + g.negro;
         return `
             <tr>
-                <td><strong>${g.nombre}</strong>${g.arrendadores.length > 1 ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${g.arrendadores.length} miembros</span>` : ''}</td>
+                <td><strong>${escaparHTML(g.nombre)}</strong>${g.arrendadores.length > 1 ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${g.arrendadores.length} miembros</span>` : ''}</td>
                 <td>${tipo}</td>
                 <td>${g.contratos}</td>
                 <td>${formatearNumero(g.blanco)}</td>

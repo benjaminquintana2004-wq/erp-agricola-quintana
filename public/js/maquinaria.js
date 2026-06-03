@@ -53,7 +53,7 @@ function renderizarTabla(maquinas) {
     hoy.setHours(0, 0, 0, 0);
 
     tbody.innerHTML = maquinas.map(m => {
-        const marcaModelo = [m.marca, m.modelo].filter(Boolean).join(' ') || '—';
+        const marcaModelo = escaparHTML([m.marca, m.modelo].filter(Boolean).join(' ')) || '—';
         let serviceBadge = '—';
 
         if (m.proximo_service_fecha) {
@@ -71,8 +71,8 @@ function renderizarTabla(maquinas) {
 
         return `
         <tr>
-            <td><strong>${m.nombre}</strong></td>
-            <td>${m.tipo || '—'}</td>
+            <td><strong>${escaparHTML(m.nombre)}</strong></td>
+            <td>${escaparHTML(m.tipo) || '—'}</td>
             <td>${marcaModelo}</td>
             <td>${m.anio || '—'}</td>
             <td>${m.horas_totales ? Number(m.horas_totales).toLocaleString('es-AR') + ' hs' : '—'}</td>
@@ -190,7 +190,7 @@ function abrirModalMaquina(titulo, datos) {
     const contenido = `
         <div class="campo-grupo">
             <label class="campo-label">Nombre <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Ej: Tractor John Deere 7215R">
+            <input type="text" id="campo-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Ej: Tractor John Deere 7215R">
         </div>
 
         <div class="campos-fila">
@@ -217,11 +217,11 @@ function abrirModalMaquina(titulo, datos) {
         <div class="campos-fila">
             <div class="campo-grupo">
                 <label class="campo-label">Marca</label>
-                <input type="text" id="campo-marca" class="campo-input" value="${datos.marca || ''}" placeholder="Ej: John Deere">
+                <input type="text" id="campo-marca" class="campo-input" value="${escaparHTML(datos.marca)}" placeholder="Ej: John Deere">
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Modelo</label>
-                <input type="text" id="campo-modelo" class="campo-input" value="${datos.modelo || ''}" placeholder="Ej: 7215R">
+                <input type="text" id="campo-modelo" class="campo-input" value="${escaparHTML(datos.modelo)}" placeholder="Ej: 7215R">
             </div>
         </div>
 
@@ -291,7 +291,7 @@ function verMaquina(id) {
     const m = maquinariaCargada.find(x => x.id === id);
     if (!m) { mostrarError('No se encontró la máquina.'); return; }
 
-    const marcaModelo = [m.marca, m.modelo].filter(Boolean).join(' ') || '—';
+    const marcaModelo = escaparHTML([m.marca, m.modelo].filter(Boolean).join(' ')) || '—';
 
     let mantenimientosHTML = '';
     if (m.mantenimientos && m.mantenimientos.length > 0) {
@@ -306,7 +306,7 @@ function verMaquina(id) {
                     <div class="mantenimiento-fecha">${formatearFecha(mt.fecha)}</div>
                     <div class="mantenimiento-info">
                         <strong>${mt.tipo || 'Mantenimiento'}</strong>
-                        ${mt.descripcion ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${mt.descripcion}</span>` : ''}
+                        ${mt.descripcion ? `<br><span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">${escaparHTML(mt.descripcion)}</span>` : ''}
                     </div>
                     <div class="mantenimiento-costo">${mt.costo ? formatearMoneda(mt.costo) : '—'}</div>
                 </div>
@@ -318,7 +318,7 @@ function verMaquina(id) {
         <div class="contrato-detalle-grid">
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Nombre</span>
-                <span class="contrato-detalle-valor"><strong>${m.nombre}</strong></span>
+                <span class="contrato-detalle-valor"><strong>${escaparHTML(m.nombre)}</strong></span>
             </div>
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Tipo</span>

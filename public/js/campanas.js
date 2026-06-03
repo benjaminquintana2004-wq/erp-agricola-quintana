@@ -244,7 +244,7 @@ function renderizarCampanas(campanas) {
         return `
         <div class="campana-tarjeta ${claseActiva}">
             <div class="campana-header">
-                <span class="campana-nombre">${c.nombre}</span>
+                <span class="campana-nombre">${escaparHTML(c.nombre)}</span>
                 <div style="display:flex;align-items:center;gap:var(--espacio-sm);">
                     ${badgeEstado}
                     ${esAdmin ? `
@@ -337,7 +337,7 @@ function abrirModalCampana(titulo, datos) {
     const contenido = `
         <div class="campo-grupo">
             <label class="campo-label">Nombre de la campaña <span class="campo-requerido">*</span></label>
-            <input type="text" id="campo-nombre" class="campo-input" value="${datos.nombre || ''}" placeholder="Ej: 2025/26">
+            <input type="text" id="campo-nombre" class="campo-input" value="${escaparHTML(datos.nombre)}" placeholder="Ej: 2025/26">
             <span class="campo-ayuda">Formato: año inicio / últimos 2 dígitos del año fin</span>
         </div>
         <div class="campos-fila">

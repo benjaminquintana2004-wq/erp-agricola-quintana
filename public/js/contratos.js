@@ -236,7 +236,7 @@ function renderizarTablaContratos(contratos) {
             .map(a => {
                 const reps = a._representantes.map(r => {
                     const cargo = r.cargo ? ` (${r.cargo})` : '';
-                    return `${r.nombre_completo}${cargo}`;
+                    return `${escaparHTML(r.nombre_completo)}${cargo}`;
                 }).join(', ');
                 return `Representada por ${reps}`;
             })
@@ -448,7 +448,7 @@ function mostrarAlertas(contratos) {
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
                 <span><strong>${vencidos.length} contrato${vencidos.length > 1 ? 's' : ''} vencido${vencidos.length > 1 ? 's' : ''}:</strong>
-                ${vencidos.map(c => (c.nombre_grupo || c.arrendadores_vinculados?.[0]?.arrendadores?.nombre || 'Sin nombre')).join(', ')}</span>
+                ${vencidos.map(c => escaparHTML(c.nombre_grupo || c.arrendadores_vinculados?.[0]?.arrendadores?.nombre || 'Sin nombre')).join(', ')}</span>
             </div>
         `;
     }
@@ -475,7 +475,7 @@ function mostrarAlertas(contratos) {
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
                 <span><strong>RENSPA vencido:</strong>
-                ${renspaVencidos.map(c => `${(c.nombre_grupo || c.arrendadores_vinculados?.[0]?.arrendadores?.nombre || 'Sin nombre')} (${c.renspa_numero})`).join(', ')}
+                ${renspaVencidos.map(c => `${escaparHTML(c.nombre_grupo || c.arrendadores_vinculados?.[0]?.arrendadores?.nombre || 'Sin nombre')} (${escaparHTML(c.renspa_numero)})`).join(', ')}
                 — No se pueden despachar granos de estos campos</span>
             </div>
         `;
@@ -490,7 +490,7 @@ function mostrarAlertas(contratos) {
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
                 <span><strong>RENSPA por vencer:</strong>
-                ${renspaPorVencer.map(c => `${(c.nombre_grupo || c.arrendadores_vinculados?.[0]?.arrendadores?.nombre || 'Sin nombre')} (vence ${formatearFecha(c.renspa_vencimiento)})`).join(', ')}</span>
+                ${renspaPorVencer.map(c => `${escaparHTML(c.nombre_grupo || c.arrendadores_vinculados?.[0]?.arrendadores?.nombre || 'Sin nombre')} (vence ${formatearFecha(c.renspa_vencimiento)})`).join(', ')}</span>
             </div>
         `;
     }
@@ -701,7 +701,7 @@ function abrirModalContrato(titulo, datos) {
         <div class="campo-grupo" style="margin-top: var(--espacio-lg);">
             <label class="campo-label">Nombre del grupo <span class="campo-requerido">*</span></label>
             <input type="text" id="campo-nombre-grupo" class="campo-input"
-                value="${datos.nombre_grupo || ''}"
+                value="${escaparHTML(datos.nombre_grupo)}"
                 placeholder="Ej: Familia Rebufatti, ACME SA, Pérez y López"
                 oninput="marcarNombreGrupoManual()">
             <span class="campo-ayuda" id="nombre-grupo-ayuda">Se completa automáticamente según los arrendadores que cargues. Podés editarlo.</span>
@@ -710,7 +710,7 @@ function abrirModalContrato(titulo, datos) {
         <div class="campo-grupo">
             <label class="campo-label">Campo / Establecimiento</label>
             <input type="text" id="campo-campo" class="campo-input"
-                value="${datos.campo || ''}"
+                value="${escaparHTML(datos.campo)}"
                 placeholder="Ej: Villa Ascasubi, Córdoba">
             <span class="campo-ayuda">Nombre o ubicación del campo arrendado en este contrato</span>
         </div>
@@ -1016,7 +1016,7 @@ function agregarClausula(datos = {}) {
                 <option value="impuestos" ${datos.tipo === 'impuestos' ? 'selected' : ''}>Impuestos</option>
                 <option value="otra" ${datos.tipo === 'otra' ? 'selected' : ''}>Otra</option>
             </select>
-            <input type="text" placeholder="Descripción de la cláusula" value="${datos.descripcion || ''}">
+            <input type="text" placeholder="Descripción de la cláusula" value="${escaparHTML(datos.descripcion)}">
             <button class="fraccion-eliminar" onclick="this.closest('.clausula-item').remove()" title="Quitar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -2513,7 +2513,7 @@ async function verContrato(id) {
                 ${clausulas.map(cl => `
                     <div style="padding: var(--espacio-sm) var(--espacio-md); background-color: var(--color-fondo-secundario); border-radius: var(--radio-md); border: 1px solid var(--color-borde);">
                         <span class="badge badge-gris" style="margin-bottom: 4px;">${tiposLabels[cl.tipo] || cl.tipo}</span>
-                        <p style="font-size: var(--texto-sm); color: var(--color-texto); margin-top: 4px;">${cl.descripcion}</p>
+                        <p style="font-size: var(--texto-sm); color: var(--color-texto); margin-top: 4px;">${escaparHTML(cl.descripcion)}</p>
                     </div>
                 `).join('')}
             </div>
@@ -2528,7 +2528,7 @@ async function verContrato(id) {
             </div>
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Campo</span>
-                <span class="contrato-detalle-valor">${contrato.campo || '—'}</span>
+                <span class="contrato-detalle-valor">${escaparHTML(contrato.campo) || '—'}</span>
             </div>
             <div class="contrato-detalle-item">
                 <span class="contrato-detalle-label">Estado</span>
@@ -2596,7 +2596,7 @@ async function verContrato(id) {
                             <ul style="margin:4px 0 0 18px;padding:0;color:var(--color-texto);">
                                 ${reps.map(r => `
                                     <li>
-                                        <strong>${r.nombre_completo}</strong>${r.cargo ? ` <span style="color:var(--color-texto-tenue);">(${r.cargo})</span>` : ''}
+                                        <strong>${escaparHTML(r.nombre_completo)}</strong>${r.cargo ? ` <span style="color:var(--color-texto-tenue);">(${escaparHTML(r.cargo)})</span>` : ''}
                                         ${r.dni ? `<span style="color:var(--color-texto-tenue);"> · DNI ${r.dni}</span>` : ''}
                                     </li>
                                 `).join('')}
@@ -2608,7 +2608,7 @@ async function verContrato(id) {
                             <div style="display:flex; align-items:center; gap: var(--espacio-sm);">
                                 ${v.es_titular_principal ? '<span style="color: var(--color-acento); font-size: var(--texto-md);" title="Titular principal">★</span>' : ''}
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 600;">${a.nombre || '—'}</div>
+                                    <div style="font-weight: 600;">${escaparHTML(a.nombre) || '—'}</div>
                                     <div style="font-size: var(--texto-xs); color: var(--color-texto-tenue);">
                                         ${tipoLabel}${id ? ' · ' + id : ''}
                                     </div>
@@ -2862,7 +2862,7 @@ function renderChipsArrendadores() {
                 <div style="color: var(--color-dorado); margin-top: 2px;">${tipoIcon}</div>
                 <div style="flex: 1;">
                     <div style="font-weight: 600;">
-                        ${a.nombre_completo || '(sin nombre)'}
+                        ${escaparHTML(a.nombre_completo) || '(sin nombre)'}
                         ${badgeTitular}
                         ${badgeExistente}
                     </div>
@@ -2977,7 +2977,7 @@ function renderRepresentantes() {
             </div>
             <div class="campo-grupo">
                 <label class="campo-label">Nombre completo <span class="campo-requerido">*</span></label>
-                <input type="text" class="campo-input" value="${r.nombre_completo || ''}"
+                <input type="text" class="campo-input" value="${escaparHTML(r.nombre_completo)}"
                     placeholder="Hilda Rosa Grosso"
                     oninput="actualizarRepresentante(${i}, 'nombre_completo', this.value)">
             </div>
@@ -3111,11 +3111,11 @@ function mostrarFormNuevoArrendador(idx = null) {
             <div class="campos-fila">
                 <div class="campo-grupo">
                     <label class="campo-label">Nombre de pila</label>
-                    <input type="text" id="nuevo-arr-nombre-pila" class="campo-input" value="${a.nombre_pila || ''}" placeholder="Roberto Mateo">
+                    <input type="text" id="nuevo-arr-nombre-pila" class="campo-input" value="${escaparHTML(a.nombre_pila)}" placeholder="Roberto Mateo">
                 </div>
                 <div class="campo-grupo">
                     <label class="campo-label">Apellido</label>
-                    <input type="text" id="nuevo-arr-apellido" class="campo-input" value="${a.apellido || ''}" placeholder="Rebufatti">
+                    <input type="text" id="nuevo-arr-apellido" class="campo-input" value="${escaparHTML(a.apellido)}" placeholder="Rebufatti">
                 </div>
             </div>
             <div class="campo-grupo">
@@ -3127,13 +3127,13 @@ function mostrarFormNuevoArrendador(idx = null) {
         <div id="campos-empresa" style="display: ${a.tipo === 'empresa' ? 'block' : 'none'};">
             <div class="campo-grupo">
                 <label class="campo-label">Razón social</label>
-                <input type="text" id="nuevo-arr-razon-social" class="campo-input" value="${a.tipo === 'empresa' ? (a.nombre_completo || '') : ''}" placeholder="Agropecuaria Los Álamos SA">
+                <input type="text" id="nuevo-arr-razon-social" class="campo-input" value="${a.tipo === 'empresa' ? escaparHTML(a.nombre_completo) : ''}" placeholder="Agropecuaria Los Álamos SA">
             </div>
         </div>
 
         <div class="campo-grupo">
             <label class="campo-label">Domicilio</label>
-            <input type="text" id="nuevo-arr-domicilio" class="campo-input" value="${a.domicilio || ''}" placeholder="Opcional">
+            <input type="text" id="nuevo-arr-domicilio" class="campo-input" value="${escaparHTML(a.domicilio)}" placeholder="Opcional">
         </div>
 
         <div style="display:flex; gap: var(--espacio-sm); margin-top: var(--espacio-sm);">
