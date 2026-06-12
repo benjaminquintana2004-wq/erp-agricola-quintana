@@ -1762,12 +1762,10 @@ async function autocompletarFormulario(datos) {
         for (const a of datos.arrendadores) {
             if (!a) continue;
 
-            // Buscar si ya existe en el catálogo (por CUIT, luego DNI)
-            let existente = null;
+            // Buscar si ya existe en el catálogo (por CUIT, DNI o nombre).
+            // El match por nombre evita duplicar a los que no tienen CUIT.
             const cuitN = normalizarCuit(a.cuit);
-            const dniN = normalizarDni(a.dni);
-            if (cuitN) existente = arrendadoresParaSelect.find(x => normalizarCuit(x.cuit) === cuitN);
-            if (!existente && dniN) existente = arrendadoresParaSelect.find(x => normalizarDni(x.dni) === dniN);
+            const existente = buscarArrendadorExistente(a);
 
             // Evitar duplicados dentro del contrato
             const yaEnContrato = arrendadoresContrato.some(x =>
@@ -2044,6 +2042,15 @@ async function guardarContrato() {
     for (let i = 0; i < arrendadoresContrato.length; i++) {
         const a = arrendadoresContrato[i];
         if (a.id) continue; // ya existe
+
+        // Red de seguridad anti-duplicados: si ya hay uno con el mismo
+        // CUIT/DNI/nombre, reusarlo en vez de crear otro.
+        const yaExiste = buscarArrendadorExistente(a);
+        if (yaExiste) {
+            a.id = yaExiste.id;
+            a._existente = true;
+            continue;
+        }
 
         const payload = {
             nombre: a.nombre_completo,
@@ -2811,6 +2818,39 @@ function normalizarCuit(cuit) {
 function normalizarDni(dni) {
     if (!dni) return '';
     return String(dni).replace(/[-\s.]/g, '').trim();
+}
+
+/**
+ * Normaliza un nombre para comparar duplicados: minúsculas, sin acentos,
+ * sin comas, espacios colapsados. Ej: "BOCCOLINI LOPEZ, César" y
+ * "boccolini lopez cesar" se consideran iguales.
+ */
+function normalizarNombre(nombre) {
+    if (!nombre) return '';
+    return String(nombre)
+        .toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '') // sacar acentos
+        .replace(/,/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Busca un arrendador ya existente en el catálogo (arrendadoresParaSelect)
+ * que coincida por CUIT, luego DNI, luego nombre normalizado.
+ * Clave para NO duplicar arrendadores al extraer/guardar contratos
+ * (sobre todo los que no tienen CUIT, como familias o sucesiones).
+ */
+function buscarArrendadorExistente(a) {
+    if (!a) return null;
+    const cuitN = normalizarCuit(a.cuit);
+    const dniN = normalizarDni(a.dni);
+    const nombreN = normalizarNombre(a.nombre_completo || a.nombre);
+    let m = null;
+    if (cuitN) m = arrendadoresParaSelect.find(x => normalizarCuit(x.cuit) === cuitN);
+    if (!m && dniN) m = arrendadoresParaSelect.find(x => normalizarDni(x.dni) === dniN);
+    if (!m && nombreN) m = arrendadoresParaSelect.find(x => normalizarNombre(x.nombre) === nombreN);
+    return m || null;
 }
 
 /**
