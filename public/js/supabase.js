@@ -41,10 +41,11 @@ function urlProxyGemini(modelo = 'gemini-2.5-flash') {
     return `${base}/functions/v1/gemini-proxy?model=${encodeURIComponent(modelo)}`;
 }
 
-/** URL del proxy de Anthropic (Claude). */
+/** URL del proxy de Anthropic (Claude). La función desplegada en Supabase
+ *  se llama "anthropic-proxy-service". */
 function urlProxyAnthropic() {
     const base = window.__ENV__?.SUPABASE_URL || '';
-    return `${base}/functions/v1/anthropic-proxy`;
+    return `${base}/functions/v1/anthropic-proxy-service`;
 }
 
 /**

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistente — ERP Agrícola Quintana</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/formularios.css">
+    <link rel="stylesheet" href="/css/asistente.css">
+</head>
+<body>
+
+    <div id="pantalla-carga" class="cargando-pagina">
+        <div class="spinner spinner-grande"></div>
+        <p>Cargando asistente...</p>
+    </div>
+
+    <div id="contenido-principal" class="contenido-principal" style="display: none;">
+        <div class="pagina-contenido">
+
+            <div class="asistente-contenedor">
+
+                <!-- Mensajes -->
+                <div id="asistente-mensajes" class="asistente-mensajes">
+                    <div class="chat-fila chat-fila-asistente">
+                        <div class="chat-avatar">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg>
+                        </div>
+                        <div class="chat-burbuja chat-burbuja-asistente">
+                            ¡Hola! Soy tu asistente. Puedo ayudarte con <strong>saldos de quintales</strong>, <strong>contratos</strong>, <strong>movimientos</strong> y <strong>tesorería</strong> (cheques y pagos). Probá una de las preguntas de abajo o escribí la tuya.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preguntas sugeridas -->
+                <div id="asistente-sugeridas" class="asistente-sugeridas"></div>
+
+                <!-- Caja de entrada -->
+                <div class="asistente-entrada">
+                    <textarea id="asistente-input" class="asistente-textarea" rows="1"
+                              placeholder="Escribí tu pregunta… (ej: ¿cuánto le debo a Malpassi?)"
+                              onkeydown="manejarTeclaAsistente(event)"></textarea>
+                    <button class="btn-primario asistente-enviar" onclick="enviarPreguntaAsistente()" title="Enviar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;">
+                            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="asistente-aviso">
+                    El asistente solo lee información y responde con tus permisos. No modifica datos.
+                </p>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/config.js"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/asistente.js"></script>
+
+    <script>
+        async function iniciar() {
+            const usuario = await crearLayout(
+                'Asistente',
+                'Preguntá sobre tus datos en lenguaje natural',
+                ''
+            );
+            if (!usuario) return;
+            iniciarAsistenteUI();
+        }
+        iniciar();
+    </script>
+
+</body>
+</html>

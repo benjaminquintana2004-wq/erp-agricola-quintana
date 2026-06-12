@@ -72,5 +72,15 @@ Deno.serve(async (req) => {
     },
     body,
   });
-  return new Response(await upstream.text(), { status: upstream.status, headers: jsonHeaders });
+
+  // Pasamos el cuerpo TAL CUAL (streaming): si el pedido tiene stream:true,
+  // Anthropic devuelve un stream SSE y lo reenviamos en vivo. Si no, devuelve
+  // JSON normal y también pasa bien. Copiamos el Content-Type del upstream.
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: {
+      ...cors,
+      "Content-Type": upstream.headers.get("Content-Type") || "application/json",
+    },
+  });
 });
