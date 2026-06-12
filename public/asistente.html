@@ -26,20 +26,19 @@
 
             <div class="asistente-contenedor">
 
-                <!-- Mensajes -->
+                <!-- Mensajes (arranca con la bienvenida centrada) -->
                 <div id="asistente-mensajes" class="asistente-mensajes">
-                    <div class="chat-fila chat-fila-asistente">
-                        <div class="chat-avatar">
+                    <div class="asistente-bienvenida">
+                        <div class="bienvenida-icono">
                             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg>
                         </div>
-                        <div class="chat-burbuja chat-burbuja-asistente">
-                            ¡Hola! Soy tu asistente. Puedo ayudarte con <strong>saldos de quintales</strong>, <strong>contratos</strong>, <strong>movimientos</strong> y <strong>tesorería</strong> (cheques y pagos). Probá una de las preguntas de abajo o escribí la tuya.
-                        </div>
+                        <h2 class="bienvenida-titulo">¡Hola! Soy tu asistente</h2>
+                        <p class="bienvenida-sub">
+                            Preguntame en lenguaje natural sobre <strong>saldos de quintales</strong>, <strong>contratos</strong>, <strong>movimientos</strong> y <strong>tesorería</strong>. Probá una de estas o escribí la tuya:
+                        </p>
+                        <div id="asistente-sugeridas" class="asistente-sugeridas"></div>
                     </div>
                 </div>
-
-                <!-- Preguntas sugeridas -->
-                <div id="asistente-sugeridas" class="asistente-sugeridas"></div>
 
                 <!-- Caja de entrada -->
                 <div class="asistente-entrada">
