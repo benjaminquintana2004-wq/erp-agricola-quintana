@@ -22,7 +22,8 @@ async function iniciarSesion() {
     const { data, error } = await db.auth.signInWithOAuth({
         provider: 'google',
         options: {
-            redirectTo: window.location.origin
+            // Después de loguearse, caer en el Asistente (la home de la app)
+            redirectTo: window.location.origin + '/asistente.html'
         }
     });
 

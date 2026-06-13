@@ -38,7 +38,6 @@ const ICONOS = {
 // Definición de las secciones del menú
 const SECCIONES_MENU = [
     { seccion: 'Principal' },
-    { nombre: 'Dashboard', icono: 'dashboard', url: '/index.html' },
     { nombre: 'Asistente', icono: 'asistente', url: '/asistente.html' },
     { nombre: 'Arrendadores', icono: 'arrendadores', url: '/arrendadores.html' },
     { nombre: 'Movimientos', icono: 'movimientos', url: '/movimientos.html', badgeKey: 'movimientos' },
