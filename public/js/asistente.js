@@ -17,6 +17,31 @@ const ASISTENTE_MODELO = 'claude-sonnet-4-5';
 // Historial visible del chat (para la UI)
 let __historialChat = [];
 
+// La conversación se guarda en el navegador para que se mantenga al cambiar
+// de página y sea la MISMA entre el globito flotante y la página del asistente.
+const ASISTENTE_STORAGE_KEY = 'erp_asistente_chat';
+
+function guardarHistorialAsistente() {
+    try {
+        const limpio = __historialChat.filter(m => m.rol === 'usuario' || m.rol === 'asistente');
+        sessionStorage.setItem(ASISTENTE_STORAGE_KEY, JSON.stringify(limpio));
+    } catch (e) { /* sessionStorage no disponible: ignorar */ }
+}
+
+function restaurarHistorialAsistente() {
+    try {
+        const raw = sessionStorage.getItem(ASISTENTE_STORAGE_KEY);
+        __historialChat = raw ? (JSON.parse(raw) || []) : [];
+    } catch (e) { __historialChat = []; }
+}
+
+/** Borra la conversación (botón "nueva charla"). */
+function limpiarChatAsistente() {
+    __historialChat = [];
+    try { sessionStorage.removeItem(ASISTENTE_STORAGE_KEY); } catch (e) {}
+    if (typeof location !== 'undefined') location.reload();
+}
+
 // ==============================================
 // Helpers de formato
 // ==============================================
@@ -710,6 +735,9 @@ async function enviarPreguntaAsistente(textoForzado) {
         };
         renderizarChat();
     }
+
+    // Guardar la conversación (se mantiene al cambiar de página / entre globito y página)
+    guardarHistorialAsistente();
 }
 
 function manejarTeclaAsistente(e) {
@@ -720,6 +748,13 @@ function manejarTeclaAsistente(e) {
 }
 
 function iniciarAsistenteUI() {
+    // Restaurar conversación guardada (si la hay) → se mantiene entre páginas
+    restaurarHistorialAsistente();
+    if (__historialChat.length > 0) {
+        renderizarChat(); // reemplaza la bienvenida por la charla guardada
+        return;
+    }
+    // Sin charla previa: mostrar las preguntas sugeridas en la bienvenida
     const cont = document.getElementById('asistente-sugeridas');
     if (cont) {
         cont.innerHTML = PREGUNTAS_SUGERIDAS.map(p =>

@@ -352,7 +352,107 @@ async function crearLayout(titulo, subtitulo, accionesHTML = '') {
         contenido.insertAdjacentHTML('afterbegin', renderizarHeader(titulo, subtitulo, accionesHTML));
     }
 
+    // 9. Globito flotante del asistente (en todas las páginas menos la dedicada)
+    inyectarWidgetAsistente();
+
     return window.__USUARIO__;
+}
+
+// ==============================================
+// Globito flotante del asistente (chat en cualquier página)
+// ==============================================
+const ASISTENTE_AVATAR_MINI = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg>';
+
+function inyectarWidgetAsistente() {
+    // En la página dedicada del asistente no hace falta el globito
+    if (window.location.pathname.replace(/\/$/, '').endsWith('/asistente.html')) return;
+    if (document.getElementById('asistente-widget')) return; // ya inyectado
+
+    // Asegurar el CSS del asistente en esta página
+    if (!document.querySelector('link[href="/css/asistente.css"]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = '/css/asistente.css';
+        document.head.appendChild(link);
+    }
+
+    const sugeridasInicial = [
+        '¿Cuánto le debo a Rebufatti?',
+        '¿A quién le debo más quintales?',
+        '¿Cuántos contratos vencidos tengo?',
+        '¿Qué facturas me faltan?'
+    ];
+
+    const cont = document.createElement('div');
+    cont.id = 'asistente-widget';
+    cont.innerHTML = `
+        <div id="asistente-panel" class="asistente-panel" style="display:none;">
+            <div class="asistente-panel-header">
+                <div class="asistente-panel-id">
+                    <span class="asistente-panel-avatar">${ASISTENTE_AVATAR_MINI}</span>
+                    <div>
+                        <div class="asistente-panel-nombre">Asistente</div>
+                        <div class="asistente-panel-estado"><span class="punto-online"></span> En línea</div>
+                    </div>
+                </div>
+                <div class="asistente-panel-acciones">
+                    <button class="asistente-panel-btn" title="Nueva charla" onclick="limpiarChatAsistente()">⟳</button>
+                    <button class="asistente-panel-btn" title="Cerrar" onclick="toggleWidgetAsistente()">✕</button>
+                </div>
+            </div>
+
+            <div id="asistente-mensajes" class="asistente-mensajes">
+                <div class="asistente-bienvenida">
+                    <div class="bienvenida-icono">${ASISTENTE_AVATAR_MINI}</div>
+                    <h2 class="bienvenida-titulo">¡Hola!</h2>
+                    <p class="bienvenida-sub">Preguntame sobre <strong>quintales</strong>, <strong>contratos</strong>, <strong>movimientos</strong> o <strong>tesorería</strong>.</p>
+                    <div id="asistente-sugeridas" class="asistente-sugeridas"></div>
+                </div>
+            </div>
+
+            <div class="asistente-entrada">
+                <textarea id="asistente-input" class="asistente-textarea" rows="1"
+                          placeholder="Escribí tu pregunta…" onkeydown="manejarTeclaAsistente(event)"></textarea>
+                <button class="btn-primario asistente-enviar" onclick="enviarPreguntaAsistente()" title="Enviar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <button id="asistente-burbuja" class="asistente-burbuja" title="Asistente" onclick="toggleWidgetAsistente()">
+            ${ASISTENTE_AVATAR_MINI}
+        </button>
+    `;
+    document.body.appendChild(cont);
+
+    // Cargar el motor del asistente (si no está) y arrancar la UI
+    const arrancar = () => { if (typeof iniciarAsistenteUI === 'function') iniciarAsistenteUI(); };
+    if (typeof iniciarAsistenteUI === 'function') {
+        arrancar();
+    } else {
+        const s = document.createElement('script');
+        s.src = '/js/asistente.js';
+        s.onload = arrancar;
+        document.head.appendChild(s);
+    }
+}
+
+function toggleWidgetAsistente() {
+    const panel = document.getElementById('asistente-panel');
+    const burbuja = document.getElementById('asistente-burbuja');
+    if (!panel) return;
+    const abierto = panel.style.display !== 'none';
+    panel.style.display = abierto ? 'none' : 'flex';
+    if (burbuja) burbuja.classList.toggle('asistente-burbuja-abierta', !abierto);
+    if (!abierto) {
+        setTimeout(() => {
+            document.getElementById('asistente-input')?.focus();
+            const c = document.getElementById('asistente-mensajes');
+            if (c) c.scrollTop = c.scrollHeight;
+        }, 50);
+    }
 }
 
 // ==============================================

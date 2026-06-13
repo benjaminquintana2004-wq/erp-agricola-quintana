@@ -214,3 +214,119 @@
     .chat-burbuja { max-width: 85%; }
     .asistente-contenedor { height: calc(100vh - 150px); }
 }
+
+/* ==============================================
+   GLOBITO FLOTANTE + PANEL (en cualquier página)
+   ============================================== */
+
+/* Botón flotante */
+.asistente-burbuja {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-dorado) 0%, #b08a36 100%);
+    color: #1a1710;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), 0 0 0 0 rgba(201, 168, 76, 0.4);
+    transition: transform var(--transicion-rapida), box-shadow var(--transicion-rapida);
+}
+.asistente-burbuja svg { width: 26px; height: 26px; }
+.asistente-burbuja:hover { transform: translateY(-2px) scale(1.04); }
+.asistente-burbuja-abierta { transform: scale(0.92); opacity: 0.92; }
+
+/* Panel del chat */
+.asistente-panel {
+    position: fixed;
+    bottom: 94px;
+    right: 24px;
+    width: 384px;
+    max-width: calc(100vw - 36px);
+    height: 560px;
+    max-height: calc(100vh - 130px);
+    z-index: 9000;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-fondo);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+/* Header del panel */
+.asistente-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--espacio-sm) var(--espacio-md);
+    border-bottom: 1px solid var(--color-borde);
+    background: var(--color-fondo-tarjeta);
+    flex-shrink: 0;
+}
+.asistente-panel-id { display: flex; align-items: center; gap: var(--espacio-sm); }
+.asistente-panel-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-dorado) 0%, #b08a36 100%);
+    color: #1a1710;
+}
+.asistente-panel-avatar svg { width: 18px; height: 18px; }
+.asistente-panel-nombre { font-weight: 600; color: var(--color-texto); font-size: var(--texto-base); line-height: 1.1; }
+.asistente-panel-estado { font-size: var(--texto-xs); color: var(--color-texto-tenue); display: flex; align-items: center; gap: 5px; }
+.punto-online { width: 7px; height: 7px; border-radius: 50%; background: var(--color-verde); display: inline-block; }
+.asistente-panel-acciones { display: flex; gap: 4px; }
+.asistente-panel-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--color-texto-secundario);
+    border-radius: var(--radio-sm, 6px);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    transition: all var(--transicion-rapida);
+}
+.asistente-panel-btn:hover { background: var(--color-fondo-hover); color: var(--color-texto); }
+
+/* Dentro del panel: la lista de mensajes ocupa el resto, sin doble marco */
+.asistente-panel .asistente-mensajes {
+    flex: 1;
+    min-height: 0;
+    border: none;
+    background: transparent;
+    border-radius: 0;
+    padding: var(--espacio-md);
+}
+.asistente-panel .asistente-entrada { margin: 0 var(--espacio-md) var(--espacio-md); }
+.asistente-panel .asistente-bienvenida { padding: var(--espacio-lg) var(--espacio-sm); gap: var(--espacio-sm); }
+.asistente-panel .bienvenida-icono { width: 52px; height: 52px; }
+.asistente-panel .bienvenida-icono svg { width: 26px; height: 26px; }
+.asistente-panel .bienvenida-titulo { font-size: var(--texto-xl); }
+.asistente-panel .bienvenida-sub { font-size: var(--texto-sm); }
+.asistente-panel .chat-sugerida { font-size: var(--texto-xs); padding: 6px 11px; }
+
+/* Mobile: panel casi pantalla completa */
+@media (max-width: 480px) {
+    .asistente-panel {
+        right: 12px;
+        left: 12px;
+        bottom: 86px;
+        width: auto;
+        height: calc(100vh - 110px);
+        max-height: none;
+    }
+    .asistente-burbuja { bottom: 18px; right: 18px; }
+}
