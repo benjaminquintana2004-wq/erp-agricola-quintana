@@ -27,3 +27,7 @@ npm-debug.log*
 # Skills y agentes (configuración local)
 .agents/
 .claude/
+
+# Material del curso (no es del ERP)
+Codigos de ejemplo/
+course.ipynb
