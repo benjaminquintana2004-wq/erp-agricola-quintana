@@ -70,7 +70,9 @@ function rangoCampanaStr(c) {
  * (procesa todos los eventos juntos al final).
  */
 async function streamClaudeMensaje({ system, messages, tools, maxTokens = 1024, onText }) {
-    const body = { model: ASISTENTE_MODELO, max_tokens: maxTokens, messages, stream: true };
+    // temperature: 0 → respuestas deterministas y fieles a los datos
+    // (evita que invente números/nombres cuando no está seguro).
+    const body = { model: ASISTENTE_MODELO, max_tokens: maxTokens, temperature: 0, messages, stream: true };
     if (system) body.system = system;
     if (tools) body.tools = tools;
 
@@ -224,6 +226,8 @@ const ASISTENTE_TOOLS = [
 
 const ASISTENTE_SYSTEM = `Sos el asistente del ERP de un productor agropecuario argentino. Respondés en castellano rioplatense, claro y breve.
 - Usá las HERRAMIENTAS para obtener los datos del negocio; NUNCA inventes números ni nombres.
+- Los números (de cheque, montos), fechas y nombres COPIALOS CARÁCTER POR CARÁCTER tal como vienen en el JSON de la herramienta. Está PROHIBIDO inventarlos, redondearlos, completarlos o "recordarlos de memoria". Si te pido un número de cheque, copiá el valor del campo "numero_cheque" exactamente; si no está, decí que no figura.
+- Ante la mínima duda o si el dato no está en lo que devolvió la herramienta, decí "no tengo ese dato" o "no lo encontré". SIEMPRE preferí admitir que no sabés antes que arriesgar un dato que podría estar mal.
 - Unidad: "quintales (qq)". Un quintal son 100 kg.
 - Para fechas relativas ("ayer", "esta semana"), calculá a partir del campo "hoy" que devuelven los datos de tesorería.
 - Si una herramienta no devuelve datos, decilo con naturalidad (puede no haber, o puede que el usuario no tenga acceso a esa información por su rol).

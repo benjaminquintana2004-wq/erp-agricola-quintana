@@ -15,3 +15,10 @@
 [functions]
   # Directorio de funciones serverless
   directory = "netlify/functions"
+
+# La raíz del sitio redirige al Asistente (la "home" de la app).
+# El Dashboard sigue existiendo en /index.html, pero fuera del camino.
+[[redirects]]
+  from = "/"
+  to = "/asistente.html"
+  status = 302
