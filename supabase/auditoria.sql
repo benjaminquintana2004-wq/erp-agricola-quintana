@@ -52,12 +52,14 @@ DECLARE
     v_email       TEXT;
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        v_registro_id := OLD.id::TEXT;
-        v_datos       := to_jsonb(OLD);
+        v_datos := to_jsonb(OLD);
     ELSE
-        v_registro_id := NEW.id::TEXT;
-        v_datos       := to_jsonb(NEW);
+        v_datos := to_jsonb(NEW);
     END IF;
+    -- Tomar el id desde el JSON (queda NULL si la tabla no tiene columna
+    -- "id", como las de vínculo tipo cheques_facturas). Así evitamos el
+    -- error 'record "new" has no field "id"' que rompía esos INSERT.
+    v_registro_id := v_datos->>'id';
 
     SELECT email INTO v_email FROM usuarios WHERE id = auth.uid();
 
