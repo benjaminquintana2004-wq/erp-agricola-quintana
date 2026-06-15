@@ -2005,75 +2005,151 @@ async function abrirModalVincularFactura(chequeId) {
     const cheque = movimientosTesoreria.find(m => m.id === chequeId);
     if (!cheque) { mostrarError('No se encontró el cheque.'); return; }
 
-    // Cargar todas las facturas de la empresa del cheque
+    // Facturas de la empresa del cheque
     const facturas = await ejecutarConsulta(
         db.from('facturas').select('*').eq('empresa_id', cheque.empresa_id).order('fecha', { ascending: false }),
         'cargar facturas para vincular'
     ) || [];
 
-    // IDs de facturas ya vinculadas a este cheque
-    const yaVinculadasIds = new Set((cheque.facturas_vinculadas || []).map(f => f.id));
+    // Cheques de la misma empresa (de memoria)
+    const cheques = (movimientosTesoreria || [])
+        .filter(m => m.tipo === 'cheque' && m.empresa_id === cheque.empresa_id);
 
-    // Guardar en window para el buscador
-    window.__facturasDisponibles = facturas.filter(f => !yaVinculadasIds.has(f.id));
-    window.__chequeParaVincular = chequeId;
+    // Estado del modal de vinculación en lote
+    window.__vinc = {
+        chequeOrigen: chequeId,
+        empresaId: cheque.empresa_id,
+        facturas,
+        cheques,
+        facturasSel: new Set(),
+        chequesSel: new Set([chequeId]) // el cheque desde el que se abrió ya viene tildado
+    };
 
     const contenido = `
-        <div class="campo-grupo">
-            <label class="campo-label">Buscar factura</label>
-            <input type="text" id="buscador-factura" class="campo-input" placeholder="Nº de factura, CUIT o emisor..." oninput="filtrarFacturasVinculables()" autofocus>
+        <p style="font-size:var(--texto-sm);color:var(--color-texto-tenue);margin:0 0 var(--espacio-md);">
+            Tildá las facturas y los cheques que quieras vincular. Se crean todos los cruces de una sola vez.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--espacio-md);">
+            <div>
+                <label class="campo-label">Facturas</label>
+                <input type="text" id="buscador-factura" class="campo-input" placeholder="Nº, CUIT o emisor..." oninput="filtrarFacturasVinculables()" style="margin-bottom:var(--espacio-xs);">
+                <div id="lista-facturas-vinculables" style="max-height:340px;overflow-y:auto;border:1px solid var(--color-borde);border-radius:var(--radio-md);background:var(--color-fondo-tarjeta);"></div>
+            </div>
+            <div>
+                <label class="campo-label">Cheques</label>
+                <input type="text" id="buscador-cheque" class="campo-input" placeholder="Nº o beneficiario..." oninput="filtrarChequesVinculables()" style="margin-bottom:var(--espacio-xs);">
+                <div id="lista-cheques-vinculables" style="max-height:340px;overflow-y:auto;border:1px solid var(--color-borde);border-radius:var(--radio-md);background:var(--color-fondo-tarjeta);"></div>
+            </div>
         </div>
-        <div id="lista-facturas-vinculables" style="max-height:400px;overflow-y:auto;border:1px solid var(--color-borde);border-radius:var(--radio-md);background:var(--color-fondo-tarjeta);"></div>
+        <div id="vinc-contador" style="text-align:center;margin-top:var(--espacio-md);font-size:var(--texto-sm);color:var(--color-texto-secundario);"></div>
     `;
 
-    const footer = `<button class="btn-secundario" onclick="cerrarModal(); abrirDetalleDesdeVincular()">Volver</button>`;
+    const footer = `
+        <button class="btn-secundario" onclick="cerrarModal(); abrirDetalleDesdeVincular()">Cancelar</button>
+        <button class="btn-primario" onclick="vincularEnLote()">Vincular</button>
+    `;
 
-    abrirModal('Vincular factura existente', contenido, footer);
+    abrirModal('Vincular facturas y cheques', contenido, footer);
     filtrarFacturasVinculables();
+    filtrarChequesVinculables();
+    actualizarContadorVinc();
 }
 
 function filtrarFacturasVinculables() {
+    const st = window.__vinc; if (!st) return;
     const q = (document.getElementById('buscador-factura')?.value || '').toLowerCase().trim();
-    const lista = window.__facturasDisponibles || [];
-    const chequeId = window.__chequeParaVincular;
-
-    const filtradas = !q ? lista : lista.filter(f =>
+    const filtradas = !q ? st.facturas : st.facturas.filter(f =>
         (f.numero || '').toLowerCase().includes(q) ||
         (f.emisor_cuit || '').toLowerCase().includes(q) ||
         (f.emisor_nombre || '').toLowerCase().includes(q)
     );
-
     const cont = document.getElementById('lista-facturas-vinculables');
     if (!cont) return;
-
-    if (filtradas.length === 0) {
-        cont.innerHTML = `
-            <div style="padding:var(--espacio-lg);text-align:center;color:var(--color-texto-tenue);font-size:var(--texto-sm);">
-                ${lista.length === 0 ? 'No hay facturas disponibles para vincular en esta empresa.' : 'Ninguna factura coincide con la búsqueda.'}
-            </div>
-        `;
+    if (st.facturas.length === 0) {
+        cont.innerHTML = `<div style="padding:var(--espacio-md);text-align:center;color:var(--color-texto-tenue);font-size:var(--texto-xs);">No hay facturas en esta empresa.</div>`;
         return;
     }
-
+    if (filtradas.length === 0) {
+        cont.innerHTML = `<div style="padding:var(--espacio-md);text-align:center;color:var(--color-texto-tenue);font-size:var(--texto-xs);">Ninguna factura coincide.</div>`;
+        return;
+    }
     cont.innerHTML = filtradas.map(f => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--espacio-sm);padding:var(--espacio-sm) var(--espacio-md);border-bottom:1px solid var(--color-borde);">
-            <div style="flex:1;min-width:0;">
-                <div style="font-size:var(--texto-sm);font-weight:500;color:var(--color-texto);">
-                    <span style="font-family:var(--fuente-mono);">${f.numero || '(sin nº)'}</span>
-                    ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);"> · ${escaparHTML(f.emisor_nombre)}</span>` : ''}
-                </div>
-                <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">
-                    ${f.fecha ? formatearFecha(f.fecha) : 'Sin fecha'}
-                    ${f.monto_total ? ` · $ ${formatearNumero(f.monto_total)}` : ''}
-                    ${f.emisor_cuit ? ` · CUIT ${escaparHTML(f.emisor_cuit)}` : ''}
-                </div>
-            </div>
-            <div style="display:flex;gap:4px;flex-shrink:0;">
-                <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="verFacturaCheque('${f.archivo_url}')">Ver</button>
-                <button class="btn-primario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="vincularFacturaAlCheque('${chequeId}', '${f.id}')">Vincular</button>
-            </div>
-        </div>
+        <label style="display:flex;align-items:center;gap:var(--espacio-sm);padding:var(--espacio-sm) var(--espacio-md);border-bottom:1px solid var(--color-borde);cursor:pointer;">
+            <input type="checkbox" ${st.facturasSel.has(f.id) ? 'checked' : ''} onchange="toggleVincFactura('${f.id}', this.checked)">
+            <span style="flex:1;min-width:0;">
+                <span style="font-size:var(--texto-sm);font-weight:500;color:var(--color-texto);font-family:var(--fuente-mono);">${f.numero || '(sin nº)'}</span>
+                ${f.emisor_nombre ? `<span style="color:var(--color-texto-tenue);font-size:var(--texto-xs);"> · ${escaparHTML(f.emisor_nombre)}</span>` : ''}
+                <span style="display:block;font-size:var(--texto-xs);color:var(--color-texto-tenue);">${f.fecha ? formatearFecha(f.fecha) : 'Sin fecha'}${f.monto_total ? ` · $ ${formatearNumero(f.monto_total)}` : ''}</span>
+            </span>
+        </label>
     `).join('');
+}
+
+function toggleVincFactura(id, on) {
+    const st = window.__vinc; if (!st) return;
+    if (on) st.facturasSel.add(id); else st.facturasSel.delete(id);
+    actualizarContadorVinc();
+}
+
+function filtrarChequesVinculables() {
+    const st = window.__vinc; if (!st) return;
+    const q = (document.getElementById('buscador-cheque')?.value || '').toLowerCase().trim();
+    const filtrados = !q ? st.cheques : st.cheques.filter(c =>
+        (c.numero_cheque || '').toLowerCase().includes(q) ||
+        (c.beneficiarios?.nombre || '').toLowerCase().includes(q)
+    );
+    const cont = document.getElementById('lista-cheques-vinculables');
+    if (!cont) return;
+    if (filtrados.length === 0) {
+        cont.innerHTML = `<div style="padding:var(--espacio-md);text-align:center;color:var(--color-texto-tenue);font-size:var(--texto-xs);">Ningún cheque coincide.</div>`;
+        return;
+    }
+    cont.innerHTML = filtrados.map(c => `
+        <label style="display:flex;align-items:center;gap:var(--espacio-sm);padding:var(--espacio-sm) var(--espacio-md);border-bottom:1px solid var(--color-borde);cursor:pointer;">
+            <input type="checkbox" ${st.chequesSel.has(c.id) ? 'checked' : ''} onchange="toggleVincCheque('${c.id}', this.checked)">
+            <span style="flex:1;min-width:0;">
+                <span style="font-size:var(--texto-sm);font-weight:500;color:var(--color-texto);font-family:var(--fuente-mono);">${escaparHTML(c.numero_cheque) || 'Transf.'}</span>
+                ${c.beneficiarios?.nombre ? `<span style="color:var(--color-texto-tenue);font-size:var(--texto-xs);"> · ${escaparHTML(c.beneficiarios.nombre)}</span>` : ''}
+                <span style="display:block;font-size:var(--texto-xs);color:var(--color-texto-tenue);">$ ${formatearNumero(c.monto)}${c.fecha_cobro ? ` · cobro ${formatearFecha(c.fecha_cobro)}` : ''}</span>
+            </span>
+        </label>
+    `).join('');
+}
+
+function toggleVincCheque(id, on) {
+    const st = window.__vinc; if (!st) return;
+    if (on) st.chequesSel.add(id); else st.chequesSel.delete(id);
+    actualizarContadorVinc();
+}
+
+function actualizarContadorVinc() {
+    const st = window.__vinc; if (!st) return;
+    const f = st.facturasSel.size, c = st.chequesSel.size;
+    const el = document.getElementById('vinc-contador');
+    if (el) el.innerHTML = `<strong>${f}</strong> factura${f !== 1 ? 's' : ''} × <strong>${c}</strong> cheque${c !== 1 ? 's' : ''} = <strong style="color:var(--color-dorado);">${f * c}</strong> vínculo${f * c !== 1 ? 's' : ''}`;
+}
+
+async function vincularEnLote() {
+    const st = window.__vinc; if (!st) return;
+    const fIds = [...st.facturasSel];
+    const cIds = [...st.chequesSel];
+    if (fIds.length === 0) { mostrarError('Tildá al menos una factura.'); return; }
+    if (cIds.length === 0) { mostrarError('Tildá al menos un cheque.'); return; }
+
+    // Todos los cruces (cheque × factura); los que ya existan se ignoran
+    const filas = [];
+    for (const cid of cIds) for (const fid of fIds) filas.push({ cheque_id: cid, factura_id: fid });
+
+    const ok = await ejecutarConsulta(
+        db.from('cheques_facturas').upsert(filas, { onConflict: 'cheque_id,factura_id', ignoreDuplicates: true }),
+        'vincular facturas y cheques'
+    );
+    if (ok === undefined) return;
+
+    mostrarExito(`Listo: ${fIds.length} factura${fIds.length !== 1 ? 's' : ''} vinculada${fIds.length !== 1 ? 's' : ''} a ${cIds.length} cheque${cIds.length !== 1 ? 's' : ''}.`);
+    cerrarModal();
+    await cargarTesoreria();
+    verDetalleCheque(st.chequeOrigen);
 }
 
 async function vincularFacturaAlCheque(chequeId, facturaId) {
@@ -2090,7 +2166,7 @@ async function vincularFacturaAlCheque(chequeId, facturaId) {
 }
 
 function abrirDetalleDesdeVincular() {
-    const id = window.__chequeParaVincular;
+    const id = window.__vinc?.chequeOrigen;
     if (id) verDetalleCheque(id);
 }
 
@@ -2607,6 +2683,23 @@ function abrirModalChequesBulk() {
                 <button type="button" class="btn-secundario" onclick="autoEscalonarFechasPorDiaMes()" style="padding:4px 10px;font-size:var(--texto-xs);margin-left:auto;">Aplicar</button>
             </div>
 
+            <!-- Escalonar cada N días corridos -->
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:var(--espacio-sm);padding-bottom:var(--espacio-sm);border-bottom:1px solid var(--color-borde);">
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">A partir del día</span>
+                <input type="number" id="bulk-dias-dia" class="campo-input" value="30" min="1" max="31" style="width:56px;padding:4px 8px;" oninput="actualizarAnoAutoBulk()">
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">de</span>
+                <select id="bulk-dias-mes" class="campo-select" style="width:auto;padding:4px 8px;font-size:var(--texto-xs);" onchange="actualizarAnoAutoBulk()">
+                    ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+                        .map((m, i) => `<option value="${i+1}" ${i === new Date().getMonth() ? 'selected' : ''}>${m}</option>`).join('')}
+                </select>
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">de</span>
+                <span id="bulk-dias-ano" style="font-size:var(--texto-xs);color:var(--color-dorado);font-weight:600;">${new Date().getFullYear()}</span>
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">cada</span>
+                <input type="number" id="bulk-dias-cada" class="campo-input" value="5" min="1" max="365" style="width:56px;padding:4px 8px;">
+                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">días</span>
+                <button type="button" class="btn-secundario" onclick="autoEscalonarFechasPorDias()" style="padding:4px 10px;font-size:var(--texto-xs);margin-left:auto;">Aplicar</button>
+            </div>
+
             <!-- Auto-rellenar monto en todos los cheques -->
             <div class="campo-label" style="font-size:var(--texto-xs);margin-bottom:var(--espacio-sm);">Auto-rellenar monto en todos los cheques</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -2852,6 +2945,57 @@ function autoEscalonarFechasPorDiaMes() {
 
     const nombresMes = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     mostrarExito(`Fechas escalonadas el día ${dia} de cada mes desde ${nombresMes[mesInicio]} ${anoInicio}.`);
+}
+
+/**
+ * Calcula el año automático para el escalonamiento por días: el año actual,
+ * o el próximo si el día/mes elegido ya pasó este año.
+ */
+function calcularAnoAutoBulk() {
+    const dia = parseInt(document.getElementById('bulk-dias-dia')?.value, 10);
+    const mes = parseInt(document.getElementById('bulk-dias-mes')?.value, 10);
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    let ano = hoy.getFullYear();
+    if (dia && mes) {
+        const candidata = new Date(ano, mes - 1, Math.min(dia, new Date(ano, mes, 0).getDate()));
+        if (candidata < hoy) ano += 1;
+    }
+    return ano;
+}
+
+/** Refresca el año mostrado al cambiar día/mes. */
+function actualizarAnoAutoBulk() {
+    const el = document.getElementById('bulk-dias-ano');
+    if (el) el.textContent = calcularAnoAutoBulk();
+}
+
+/**
+ * Llena las fechas de cobro a partir de una fecha base, sumando N días
+ * corridos por cheque. El año es automático. La suma de días rolea de
+ * mes/año sola (ej: 30/06 + 5 días = 05/07).
+ */
+function autoEscalonarFechasPorDias() {
+    const dia  = parseInt(document.getElementById('bulk-dias-dia')?.value, 10);
+    const mes  = parseInt(document.getElementById('bulk-dias-mes')?.value, 10);
+    const cada = parseInt(document.getElementById('bulk-dias-cada')?.value, 10);
+    const ano  = calcularAnoAutoBulk();
+
+    if (!dia || dia < 1 || dia > 31) { mostrarError('Día inválido (debe ser entre 1 y 31).'); return; }
+    if (!mes || mes < 1 || mes > 12) { mostrarError('Mes inválido.'); return; }
+    if (!cada || cada < 1) { mostrarError('Ingresá cada cuántos días (mayor a 0).'); return; }
+
+    // Fecha base (si el día no existe en el mes, usa el último válido)
+    const ultDia  = new Date(ano, mes, 0).getDate();
+    const diaBase = Math.min(dia, ultDia);
+    const base    = new Date(ano, mes - 1, diaBase);
+
+    chequesBulk.forEach((c, i) => {
+        const f = new Date(base);
+        f.setDate(f.getDate() + i * cada); // suma días corridos; rolea de mes/año solo
+        c.fecha_cobro = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+    });
+    renderFilasChequesBulk();
+    mostrarExito(`Fechas escalonadas cada ${cada} día${cada !== 1 ? 's' : ''} desde el ${diaBase}/${String(mes).padStart(2, '0')}/${ano}.`);
 }
 
 /**
