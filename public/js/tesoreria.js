@@ -28,6 +28,8 @@ let chequeEditandoId    = null;
 //              // si tipo='existente':
 //              factura_id, archivo_url }
 let facturasPendientesNuevas = [];
+// tempId de la factura pendiente que se está editando inline (null = ninguna).
+let editandoFacturaPendienteId = null;
 
 // Bulk de cheques (carga simultánea de varios con datos comunes).
 // Cada item: { tempId, numero, fecha_cobro, monto, qq }
@@ -755,6 +757,8 @@ function abrirModalCheque(datos = {}, opciones = {}) {
     if (!chequeEditandoId && !opciones.preservarPendientes) {
         facturasPendientesNuevas = [];
     }
+    // Nunca arrancar con una factura "en edición" colgada de antes.
+    editandoFacturaPendienteId = null;
 
     // Solo cuentas ARS de la empresa activa
     const cuentasEmpresa = cuentas.filter(c =>
@@ -1507,6 +1511,11 @@ function renderizarSeccionFacturasPendientes() {
     const items = facturasPendientesNuevas;
 
     const filas = items.map(p => {
+        // Si esta fila está en modo edición, mostramos el formulario inline.
+        if (editandoFacturaPendienteId === p.tempId) {
+            return renderizarFilaPendienteEdicion(p);
+        }
+
         const titulo = p.numero ? `Factura ${p.numero}` : (p.tipo === 'nueva' ? `Archivo: ${p.file?.name || 'PDF'}` : 'Factura sin número');
         const sub = [
             p.fecha ? `Fecha: ${formatearFecha(p.fecha)}` : null,
@@ -1536,7 +1545,10 @@ function renderizarSeccionFacturasPendientes() {
                     <div style="font-size:var(--texto-xs);color:var(--color-texto-tenue);margin-top:2px;">${sub}</div>
                     ${botonesExtraccion}
                 </div>
-                <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);flex-shrink:0;" onclick="quitarFacturaPendiente('${p.tempId}')">Quitar</button>
+                <div style="display:flex;gap:4px;flex-shrink:0;">
+                    ${p.tipo === 'nueva' ? `<button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="editarFacturaPendiente('${p.tempId}')" title="Editar los datos de la factura">Editar</button>` : ''}
+                    <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="quitarFacturaPendiente('${p.tempId}')">Quitar</button>
+                </div>
             </div>
         `;
     }).join('');
@@ -1581,7 +1593,94 @@ function refrescarSeccionFacturasPendientes() {
 
 function quitarFacturaPendiente(tempId) {
     facturasPendientesNuevas = facturasPendientesNuevas.filter(p => p.tempId !== tempId);
+    if (editandoFacturaPendienteId === tempId) editandoFacturaPendienteId = null;
     refrescarSeccionFacturasPendientes();
+}
+
+/**
+ * Formulario inline para editar los datos de una factura pendiente
+ * (todavía en memoria, antes de guardar el cheque). Mismos campos que
+ * el modal de edición de una factura ya guardada.
+ */
+function renderizarFilaPendienteEdicion(p) {
+    return `
+        <div style="padding:var(--espacio-sm) var(--espacio-md);border-bottom:1px solid var(--color-borde);background:var(--color-fondo-secundario);">
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">Nº de factura</label>
+                    <input type="text" id="pend-numero" class="campo-input"
+                        value="${escaparHTML(p.numero)}" placeholder="Ej: 00002-00000058">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Fecha</label>
+                    <input type="text" data-fecha id="pend-fecha" class="campo-input"
+                        value="${isoADDMM(p.fecha)}"
+                        placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10">
+                </div>
+            </div>
+            <div class="campos-fila">
+                <div class="campo-grupo">
+                    <label class="campo-label">Emisor (razón social)</label>
+                    <input type="text" id="pend-emisor-nom" class="campo-input"
+                        value="${escaparHTML(p.emisor_nombre)}" placeholder="Ej: Veron Jorge Omar">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">CUIT emisor</label>
+                    <input type="text" id="pend-emisor-cuit" class="campo-input"
+                        value="${escaparHTML(p.emisor_cuit)}" placeholder="Ej: 20-12345678-9">
+                </div>
+            </div>
+            <div class="campo-grupo">
+                <label class="campo-label">Monto total</label>
+                <input type="text" data-monto id="pend-monto" class="campo-input"
+                    value="${formatearMontoInput(p.monto_total)}" placeholder="Monto total de la factura">
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:var(--espacio-xs);margin-top:var(--espacio-sm);">
+                <button class="btn-secundario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="cancelarEdicionFacturaPendiente()">Cancelar</button>
+                <button class="btn-primario" style="padding:4px 10px;font-size:var(--texto-xs);" onclick="guardarEdicionFacturaPendiente('${p.tempId}')">Guardar datos</button>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Abre la edición inline de una factura pendiente y re-aplica las máscaras
+ * de fecha (dd/mm/aaaa) y de monto a los inputs recién creados.
+ */
+function editarFacturaPendiente(tempId) {
+    editandoFacturaPendienteId = tempId;
+    refrescarSeccionFacturasPendientes();
+    const cont = document.getElementById('bloque-facturas-pendientes');
+    if (cont) {
+        activarFechasDDMM(cont);
+        activarFormatoMonto(cont);
+        document.getElementById('pend-numero')?.focus();
+    }
+}
+
+function cancelarEdicionFacturaPendiente() {
+    editandoFacturaPendienteId = null;
+    refrescarSeccionFacturasPendientes();
+}
+
+/**
+ * Guarda los datos editados en el item en memoria (no toca el servidor:
+ * se persiste recién al guardar el cheque).
+ */
+function guardarEdicionFacturaPendiente(tempId) {
+    const p = facturasPendientesNuevas.find(x => x.tempId === tempId);
+    if (!p) return;
+
+    p.numero        = document.getElementById('pend-numero')?.value.trim() || null;
+    p.fecha         = ddmmAISO(document.getElementById('pend-fecha')?.value);
+    p.emisor_nombre = document.getElementById('pend-emisor-nom')?.value.trim() || null;
+    p.emisor_cuit   = document.getElementById('pend-emisor-cuit')?.value.trim() || null;
+    p.monto_total   = parseMontoInput(document.getElementById('pend-monto')?.value);
+    p.extraido      = true;   // ya tiene datos → no volver a mostrar los botones de IA
+
+    editandoFacturaPendienteId = null;
+    refrescarSeccionFacturasPendientes();
+    mostrarExito('Datos de la factura actualizados.');
 }
 
 /**

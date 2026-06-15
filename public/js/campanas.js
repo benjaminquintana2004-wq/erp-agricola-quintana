@@ -523,8 +523,9 @@ function confirmarEliminarCampana(id, nombre) {
             ¿Seguro que querés eliminar la campaña <strong>${nombre}</strong>?
         </p>
         <p style="font-size: var(--texto-sm); color: var(--color-texto-secundario);">
-            Se eliminarán los saldos y asociaciones de lotes vinculadas a esta campaña.
-            Esta acción no se puede deshacer.
+            Se eliminarán los saldos auto-generados de esta campaña. Si tiene
+            contratos, lotes o silobolsas asociados, no se podrá eliminar (primero
+            reasignalos o eliminalos). Esta acción no se puede deshacer.
         </p>
     `;
     const footer = `
@@ -537,15 +538,51 @@ function confirmarEliminarCampana(id, nombre) {
 }
 
 async function eliminarCampana(id) {
+    // ── 1) Proteger datos reales ────────────────────────────────────────────
+    // La campaña tiene una FK desde varias tablas. Los SALDOS son derivados
+    // (se auto-crean al crear la campaña) y se pueden borrar sin perder nada.
+    // Pero contratos, lotes asociados y silobolsas son datos cargados a mano:
+    // si existen, no borramos en cascada — avisamos y frenamos.
+    const [contratos, lotesCamp, silos] = await Promise.all([
+        ejecutarConsulta(db.from('contratos').select('id').eq('campana_id', id).limit(1),       'verificar contratos de la campaña'),
+        ejecutarConsulta(db.from('lote_campanas').select('id').eq('campana_id', id).limit(1),   'verificar lotes de la campaña'),
+        ejecutarConsulta(db.from('silobolsas').select('id').eq('campana_id', id).limit(1),      'verificar silobolsas de la campaña')
+    ]);
+
+    // Si alguna verificación falló, abortamos sin tocar nada.
+    if (contratos === undefined || lotesCamp === undefined || silos === undefined) return;
+
+    const bloqueos = [];
+    if (contratos.length) bloqueos.push('contratos');
+    if (lotesCamp.length) bloqueos.push('lotes asociados');
+    if (silos.length)     bloqueos.push('silobolsas');
+    if (bloqueos.length) {
+        mostrarError(`No se puede eliminar: la campaña tiene ${bloqueos.join(', ')} asociados. Reasignalos o eliminalos antes de borrar la campaña.`);
+        return;
+    }
+
+    // ── 2) Borrar los saldos derivados que bloquean la FK ───────────────────
+    const okSaldos = await ejecutarConsulta(
+        db.from('saldos').delete().eq('campana_id', id),
+        'eliminar saldos de la campaña'
+    );
+    if (okSaldos === undefined) return;
+
+    // ── 3) Borrar la campaña (con .select() para saber si realmente se borró) ─
     const resultado = await ejecutarConsulta(
-        db.from('campanas').delete().eq('id', id),
+        db.from('campanas').delete().eq('id', id).select(),
         'eliminar campaña'
     );
+    if (resultado === undefined) return;
 
-    if (resultado !== undefined) {
-        mostrarExito('Campaña eliminada');
-        await cargarCampanas();
+    // RLS: si el usuario no es admin_total, el DELETE no da error pero borra 0 filas.
+    if (resultado.length === 0) {
+        mostrarError('No se pudo eliminar la campaña. Solo el administrador total puede borrar campañas.');
+        return;
     }
+
+    mostrarExito('Campaña eliminada');
+    await cargarCampanas();
 }
 
 // ==============================================
