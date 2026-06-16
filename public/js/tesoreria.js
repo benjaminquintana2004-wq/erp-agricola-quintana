@@ -1023,6 +1023,66 @@ function archivoABase64Cheque(file) {
     });
 }
 
+/** Solo los dígitos de un CUIT (para comparar 20-12345678-9 con 20123456789). */
+function soloDigitosCuit(c) {
+    return c == null ? '' : String(c).replace(/\D/g, '');
+}
+
+// Empresas propias: SIEMPRE son el RECEPTOR de las facturas (a quién le facturan),
+// nunca el emisor. Si la IA devuelve uno de estos CUIT como "vendedor_cuit",
+// es un error seguro (confundió comprador con vendedor).
+const EMPRESAS_PROPIAS = [
+    { nombre: 'Diego Quintana', cuit: '20-20649478-7' },
+    { nombre: 'El Ataco SRL',   cuit: '30-71248378-0' }
+];
+
+/**
+ * Lista de receptores conocidos (las dos empresas propias + lo que haya cargado
+ * en la tabla `empresas`), sin duplicar por CUIT. Se usa para avisarle a la IA
+ * y para la red de seguridad posterior.
+ */
+function receptoresConocidos() {
+    const lista = [...EMPRESAS_PROPIAS];
+    (empresas || []).forEach(e => {
+        if (e?.cuit && !lista.some(r => soloDigitosCuit(r.cuit) === soloDigitosCuit(e.cuit))) {
+            lista.push({ nombre: e.nombre || null, cuit: e.cuit });
+        }
+    });
+    return lista.filter(r => soloDigitosCuit(r.cuit));
+}
+
+/**
+ * Bloque de texto para el prompt: le dice a la IA cuáles son los receptores
+ * (las empresas propias) para que nunca los devuelva como emisor.
+ */
+function instruccionReceptorParaPrompt() {
+    const lista = receptoresConocidos();
+    if (!lista.length) return '';
+    const nombres = lista.map(r => r.nombre ? `${r.nombre} (CUIT ${r.cuit})` : `CUIT ${r.cuit}`).join(' o ');
+    return `\n\nEn estas facturas el RECEPTOR/CLIENTE (el comprador) SIEMPRE es una de estas empresas: ${nombres}. NUNCA pongas ninguno de esos CUIT en "vendedor_cuit": son el comprador. "vendedor_cuit" es el CUIT del OTRO, el que EMITE la factura (proveedor o contratista), que figura arriba junto a la razón social y el punto de venta. El CUIT de la empresa receptora que aparezca va en "receptor_cuit".`;
+}
+
+/**
+ * Red de seguridad: corrige el error típico de la IA de confundir el CUIT del
+ * emisor con el del receptor. Si "vendedor_cuit" coincide con alguna empresa
+ * propia (un receptor):
+ *   - si vino un "receptor_cuit" distinto y que NO es una empresa propia,
+ *     estaban invertidos → lo usa como vendedor;
+ *   - si no, anula "vendedor_cuit" para que el usuario lo complete a mano.
+ */
+function corregirEmisorReceptor(datos) {
+    if (!datos) return datos;
+    const receptores = receptoresConocidos().map(r => soloDigitosCuit(r.cuit));
+    if (!receptores.length) return datos;
+
+    const vend = soloDigitosCuit(datos.vendedor_cuit);
+    if (vend && receptores.includes(vend)) {
+        const otro = soloDigitosCuit(datos.receptor_cuit);
+        datos.vendedor_cuit = (otro && !receptores.includes(otro)) ? datos.receptor_cuit : null;
+    }
+    return datos;
+}
+
 /**
  * Llama a Gemini para extraer los datos de una factura de proveedor.
  * Usa retry con backoff exponencial y fallback entre modelos.
@@ -1033,12 +1093,17 @@ function archivoABase64Cheque(file) {
 async function llamarGeminiFacturaCheque(apiKey, pdfBase64, mimeType = 'application/pdf') {
     const prompt = `Analizá esta factura argentina (factura ARCA/AFIP emitida por un proveedor o contratista) y extraé los datos en formato JSON estricto.
 
+OJO: la factura tiene DOS partes que NO hay que confundir:
+- EMISOR / VENDEDOR: quien EMITE la factura (el proveedor o contratista). Sus datos son los que queremos en "vendedor_*".
+- RECEPTOR / CLIENTE: el comprador, a quién va dirigida. Su CUIT va en "receptor_cuit", NUNCA en "vendedor_cuit".${instruccionReceptorParaPrompt()}
+
 Si un campo no aparece, poné null. No inventes datos.
 
 Formato de respuesta (solo JSON, sin markdown):
 {
-    "vendedor_nombre": "razón social del proveedor emisor",
-    "vendedor_cuit": "CUIT en formato XX-XXXXXXXX-X",
+    "vendedor_nombre": "razón social del EMISOR (proveedor/contratista)",
+    "vendedor_cuit": "CUIT del EMISOR en formato XX-XXXXXXXX-X",
+    "receptor_cuit": "CUIT del RECEPTOR/cliente en formato XX-XXXXXXXX-X",
     "numero_factura": "número completo, ej 00002-00000058",
     "fecha": "YYYY-MM-DD de la factura",
     "total": 0,
@@ -1091,7 +1156,7 @@ Formato de respuesta (solo JSON, sin markdown):
                 if (jsonStr.startsWith('```')) {
                     jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```\s*$/g, '').trim();
                 }
-                return JSON.parse(jsonStr);
+                return corregirEmisorReceptor(JSON.parse(jsonStr));
             } catch (err) {
                 ultimoError = err;
                 const reintentable = codigosReintento.includes(err.status);
@@ -1119,14 +1184,19 @@ Formato de respuesta (solo JSON, sin markdown):
 async function llamarClaudeFactura(apiKey, base64, mimeType = 'application/pdf') {
     const prompt = `Analizá esta factura argentina (factura ARCA/AFIP emitida por un proveedor o contratista) y extraé los datos en formato JSON estricto.
 
+OJO: la factura tiene DOS partes que NO hay que confundir:
+- EMISOR / VENDEDOR: quien EMITE la factura (el proveedor o contratista). Sus datos van en "vendedor_*".
+- RECEPTOR / CLIENTE: el comprador, a quién va dirigida. Su CUIT va en "receptor_cuit", NUNCA en "vendedor_cuit".${instruccionReceptorParaPrompt()}
+
 Si un campo no aparece en el documento, poné null. No inventes datos.
 
 Formato de respuesta (solo JSON, sin markdown ni explicaciones):
 {
     "numero_factura": "número completo, ej 00002-00000058",
     "fecha": "YYYY-MM-DD de la factura",
-    "vendedor_nombre": "razón social del emisor",
-    "vendedor_cuit": "CUIT del emisor en formato XX-XXXXXXXX-X",
+    "vendedor_nombre": "razón social del EMISOR (proveedor/contratista)",
+    "vendedor_cuit": "CUIT del EMISOR en formato XX-XXXXXXXX-X",
+    "receptor_cuit": "CUIT del RECEPTOR/cliente en formato XX-XXXXXXXX-X",
     "total": número (monto total en pesos, sin separadores ni símbolos)
 }`;
 
@@ -1171,7 +1241,7 @@ Formato de respuesta (solo JSON, sin markdown ni explicaciones):
             if (jsonStr.startsWith('```')) {
                 jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```\s*$/g, '').trim();
             }
-            return JSON.parse(jsonStr);
+            return corregirEmisorReceptor(JSON.parse(jsonStr));
         } catch (err) {
             ultimoError = err;
             const reintentable = codigosReintento.includes(err.status);
@@ -2785,14 +2855,18 @@ function abrirModalChequesBulk() {
             <!-- Escalonar cada N días corridos -->
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:var(--espacio-sm);padding-bottom:var(--espacio-sm);border-bottom:1px solid var(--color-borde);">
                 <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">A partir del día</span>
-                <input type="number" id="bulk-dias-dia" class="campo-input" value="30" min="1" max="31" style="width:56px;padding:4px 8px;" oninput="actualizarAnoAutoBulk()">
+                <input type="number" id="bulk-dias-dia" class="campo-input" value="30" min="1" max="31" style="width:56px;padding:4px 8px;">
                 <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">de</span>
-                <select id="bulk-dias-mes" class="campo-select" style="width:auto;padding:4px 8px;font-size:var(--texto-xs);" onchange="actualizarAnoAutoBulk()">
+                <select id="bulk-dias-mes" class="campo-select" style="width:auto;padding:4px 8px;font-size:var(--texto-xs);">
                     ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
                         .map((m, i) => `<option value="${i+1}" ${i === new Date().getMonth() ? 'selected' : ''}>${m}</option>`).join('')}
                 </select>
-                <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">de</span>
-                <span id="bulk-dias-ano" style="font-size:var(--texto-xs);color:var(--color-dorado);font-weight:600;">${new Date().getFullYear()}</span>
+                <select id="bulk-dias-ano" class="campo-select" style="width:auto;padding:4px 8px;font-size:var(--texto-xs);">
+                    ${(() => {
+                        const y = new Date().getFullYear();
+                        return [y-1, y, y+1, y+2].map(a => `<option value="${a}" ${a === y ? 'selected' : ''}>${a}</option>`).join('');
+                    })()}
+                </select>
                 <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">cada</span>
                 <input type="number" id="bulk-dias-cada" class="campo-input" value="5" min="1" max="365" style="width:56px;padding:4px 8px;">
                 <span style="font-size:var(--texto-xs);color:var(--color-texto-tenue);">días</span>
@@ -3047,40 +3121,20 @@ function autoEscalonarFechasPorDiaMes() {
 }
 
 /**
- * Calcula el año automático para el escalonamiento por días: el año actual,
- * o el próximo si el día/mes elegido ya pasó este año.
- */
-function calcularAnoAutoBulk() {
-    const dia = parseInt(document.getElementById('bulk-dias-dia')?.value, 10);
-    const mes = parseInt(document.getElementById('bulk-dias-mes')?.value, 10);
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    let ano = hoy.getFullYear();
-    if (dia && mes) {
-        const candidata = new Date(ano, mes - 1, Math.min(dia, new Date(ano, mes, 0).getDate()));
-        if (candidata < hoy) ano += 1;
-    }
-    return ano;
-}
-
-/** Refresca el año mostrado al cambiar día/mes. */
-function actualizarAnoAutoBulk() {
-    const el = document.getElementById('bulk-dias-ano');
-    if (el) el.textContent = calcularAnoAutoBulk();
-}
-
-/**
  * Llena las fechas de cobro a partir de una fecha base, sumando N días
- * corridos por cheque. El año es automático. La suma de días rolea de
- * mes/año sola (ej: 30/06 + 5 días = 05/07).
+ * corridos por cheque. El año lo elige el usuario en el desplegable
+ * (arranca en el actual). La suma de días rolea de mes/año sola
+ * (ej: 30/06 + 5 días = 05/07).
  */
 function autoEscalonarFechasPorDias() {
     const dia  = parseInt(document.getElementById('bulk-dias-dia')?.value, 10);
     const mes  = parseInt(document.getElementById('bulk-dias-mes')?.value, 10);
     const cada = parseInt(document.getElementById('bulk-dias-cada')?.value, 10);
-    const ano  = calcularAnoAutoBulk();
+    const ano  = parseInt(document.getElementById('bulk-dias-ano')?.value, 10);
 
     if (!dia || dia < 1 || dia > 31) { mostrarError('Día inválido (debe ser entre 1 y 31).'); return; }
     if (!mes || mes < 1 || mes > 12) { mostrarError('Mes inválido.'); return; }
+    if (!ano || ano < 2000) { mostrarError('Año inválido.'); return; }
     if (!cada || cada < 1) { mostrarError('Ingresá cada cuántos días (mayor a 0).'); return; }
 
     // Fecha base (si el día no existe en el mes, usa el último válido)
