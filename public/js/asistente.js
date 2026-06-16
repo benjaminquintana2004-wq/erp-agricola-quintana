@@ -215,7 +215,7 @@ const ASISTENTE_TOOLS = [
     },
     {
         name: 'tesoreria_cheques_pagos',
-        description: 'TESORERÍA: cheques y pagos. Trae los movimientos con número de cheque, beneficiario y su tipo (arrendador/contratista/empleado), quién lo entregó, monto, estado, fecha de cobro, fecha de carga al sistema ("subido_el", para resolver "ayer" usar el campo "hoy") y si tiene factura. Opcionalmente filtra por el nombre de un empleado o contratista. Usar para "cuántos cheques se subieron ayer", "cheques que entregó el empleado X y sus números", "cheques sin factura", "cuánta plata se le dio al contratista Y".',
+        description: 'TESORERÍA: cheques y pagos. Trae los movimientos con número de cheque, beneficiario y su tipo (arrendador/contratista/empleado), quién lo entregó, monto, estado, fecha de emisión ("fecha_emision"), fecha de cobro ("fecha_cobro"), fecha de carga al sistema ("subido_el", para resolver "ayer" usar el campo "hoy") con su hora exacta ("subido_hora", formato HH:MM, hora de Córdoba) y si tiene factura. Los movimientos vienen ordenados del más reciente al más antiguo, así que el "último cheque subido" es el primero de la lista. Opcionalmente filtra por el nombre de un empleado o contratista. Usar para "cuál fue el último cheque subido y a qué hora", "cuántos cheques se subieron ayer", "cheques que entregó el empleado X y sus números", "cheques sin factura", "cuánta plata se le dio al contratista Y".',
         input_schema: {
             type: 'object',
             properties: { nombre: { type: 'string', description: 'Nombre de un empleado o contratista (opcional)' } },
@@ -543,8 +543,12 @@ async function asistenteTesoreria(nombre) {
         entregado_por: m.empleado_entrega?.nombre || null,
         monto: Math.round(parseFloat(m.monto || 0)),
         estado: m.estado,
+        fecha_emision: m.fecha_emision,
         fecha_cobro: m.fecha_cobro,
-        subido_el: m.cargado_en ? new Date(m.cargado_en).toLocaleDateString('en-CA') : null,
+        subido_el: m.cargado_en ? new Date(m.cargado_en).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Cordoba' }) : null,
+        subido_hora: m.cargado_en
+            ? new Date(m.cargado_en).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Cordoba', hour: '2-digit', minute: '2-digit', hour12: false })
+            : null,
         tiene_factura: m.tipo === 'cheque' ? conFactura.has(m.id) : null
     }));
 
